@@ -1,0 +1,14 @@
+{
+    "name": "frametrail",
+    "displayName": "FrameTrail",
+    "version": "0.1.0-dev",
+    "description": "Create and edit FrameTrail hypervideos (overlays, annotations, chapters, subtitles, layout) in a local _data folder or a FrameTrail project file, checked with FrameTrail's own validator and lint.",
+    "author": {
+        "name": "Joscha Jaeger",
+        "url": "https://github.com/OpenHypervideo"
+    },
+    "homepage": "https://github.com/OpenHypervideo/FrameTrail-Skills",
+    "repository": "https://github.com/OpenHypervideo/FrameTrail-Skills",
+    "license": "MIT",
+    "keywords": ["frametrail", "hypervideo", "interactive-video", "video-annotation", "web-annotation"]
+}

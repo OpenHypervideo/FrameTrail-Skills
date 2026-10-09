@@ -1,0 +1,16 @@
+{
+    "name": "frametrail-skills",
+    "description": "Claude Code plugins for FrameTrail, the open hypervideo environment.",
+    "owner": {
+        "name": "OpenHypervideo",
+        "url": "https://github.com/OpenHypervideo"
+    },
+    "plugins": [
+        {
+            "name": "frametrail",
+            "source": "./plugin",
+            "description": "Create and edit FrameTrail hypervideos in a local _data folder or a FrameTrail project file, checked with FrameTrail's own validator and lint.",
+            "category": "media"
+        }
+    ]
+}

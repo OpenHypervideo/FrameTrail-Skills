@@ -1,0 +1,5 @@
+plans/
+.DS_Store
+node_modules/
+# FrameTrail, as the drift workflow checks it out
+/frametrail/

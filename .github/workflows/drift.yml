@@ -1,0 +1,63 @@
+name: Drift
+
+# Compares the vendored FrameTrail files with FrameTrail's develop branch (or the ref given when run by hand). It fails when they would change, after syncing them in the runner, printing the diff and running the tests with them. Then: sync against a FrameTrail release or commit, review the diff, fix the text, commit (see CLAUDE.md, "Tests and CI").
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: FrameTrail branch, tag or commit to compare with
+        default: develop
+
+env:
+  FRAMETRAIL_REF: ${{ inputs.ref || 'develop' }}
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout FrameTrail
+        uses: actions/checkout@v4
+        with:
+          repository: OpenHypervideo/FrameTrail
+          ref: ${{ env.FRAMETRAIL_REF }}
+          path: frametrail
+          # The tags, for the version git describe names in the lock
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Compare the vendored files with FrameTrail
+        id: compare
+        continue-on-error: true
+        run: node dev/sync.mjs --frametrail=frametrail --check
+
+      - name: Sync them in this runner and show the diff
+        if: steps.compare.outcome == 'failure'
+        run: |
+          node dev/sync.mjs --frametrail=frametrail
+          git add --intent-to-add --all
+          git --no-pager diff --stat
+          git --no-pager diff
+
+      - name: Run the tests with the newer files
+        id: tests
+        if: steps.compare.outcome == 'failure'
+        continue-on-error: true
+        run: node --test-reporter=spec tests/run.mjs --drift
+
+      - name: Result
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "The vendored files differ from FrameTrail $FRAMETRAIL_REF; the tests with the newer files: ${{ steps.tests.outcome }}."
+          echo "Sync against a FrameTrail release or commit, review the diff, fix the text, commit."
+          exit 1
