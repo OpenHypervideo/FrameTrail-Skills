@@ -1,5 +1,5 @@
 /*
- * FrameTrail's own checks on a _data folder or a project file (an HTML page with a FrameTrail data block): the JSON Schemas, the folder check and the lint rules of the vendored FrameTrail (../vendor/frametrail/), and what files edited by hand get wrong besides (JSON syntax, a raw "<" in a page's data block, WebVTT timings). Node 20 or later, no dependencies.
+ * FrameTrail's own checks on a _data folder or a project file (an HTML page with a FrameTrail data block): the JSON Schemas, the folder check (with WebVTT), and the lint rules of the vendored FrameTrail (../vendor/frametrail/), and what files edited by hand get wrong besides (where JSON syntax breaks, a raw "<" in a page's data block). Node 20 or later, no dependencies.
  *
  *     node check.mjs <_data folder | page.html | a file in a _data folder>    # everything; exit 1 on errors, 2 when it is no FrameTrail data
  *     node check.mjs --escape <page.html>                                      # every "<" in the page's data block written as \u003c
@@ -240,38 +240,9 @@ function schemaProblems(file, schema, value) {
     return ft().validator.validate(schema, value).map((e) => problem({ file, pointer: e.path, message: e.message }));
 }
 
-// A WebVTT time stamp as FrameTrail's parser (vtt.js) reads it: h:mm:ss.ttt or mm:ss.ttt, a dot and three digits.
-function vttSeconds(stamp) {
-    const m = /^(\d+):(\d{2})(?::(\d{2}))?\.(\d{3})$/.exec(stamp);
-    if (!m) { return null; }
-    return (m[3] !== undefined)
-        ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000
-        : Number(m[1]) * 60 + Number(m[2]) + Number(m[4]) / 1000;
-}
-
-/**
- * What keeps FrameTrail from showing subtitles: a first line other than "WEBVTT", cue timings its parser does not read, cues that end at or before their start. [{ line, message }]
- */
-export function vttProblems(text) {
-    const lines = String(text).replace(/\r\n?/g, '\n').split('\n'),
-          found = [];
-    if (lines[0].charCodeAt(0) === 0xFEFF) { lines[0] = lines[0].slice(1); }
-    if (!/^WEBVTT(?:[ \t].*)?$/.test(lines[0])) {
-        found.push({ line: 1, message: 'Does not start with the line "WEBVTT"; FrameTrail reads no subtitles from it.' });
-    }
-    lines.forEach((line, i) => {
-        if (!line.includes('-->')) { return; }
-        const m     = /^\s*(\S+)[ \t]+-->[ \t]+(\S+)(?:[ \t].*)?$/.exec(line),
-              start = m && vttSeconds(m[1]),
-              end   = m && vttSeconds(m[2]);
-        if (start === null || end === null || !m) {
-            found.push({ line: i + 1, message: 'The cue timing "' + line.trim() + '" is not mm:ss.ttt --> mm:ss.ttt or hh:mm:ss.ttt --> hh:mm:ss.ttt (a dot before exactly three digits); FrameTrail skips the cue.' });
-        } else if (end <= start) {
-            found.push({ line: i + 1, message: 'The cue ends at or before its start (' + m[1] + ' --> ' + m[2] + '); it is never shown.' });
-        }
-    });
-    return found;
-}
+// What checkFolder reports about single files, which the checks here report themselves, with a position: JSON that is not
+// JSON, and WebVTT the player cannot read (FrameTrailLint.checkVTT, "Line <n>: …").
+const singleFile = (p) => /^Is not valid JSON/.test(p.message) || (/\.vtt$/.test(p.path) && /^Line \d+: /.test(p.message));
 
 /**
  * The problems of a root's state: its files (syntax, schema, WebVTT; for a page its data block), FrameTrailLint.checkFolder, and the lint rules for the hypervideos in options.hypervideos (a Set of ids; null: all). options.duration(file) gives the length of a local media file in seconds, for clips that do not say.
@@ -291,7 +262,7 @@ function folderFileProblems(rel, text) {
               problems = schema ? schemaProblems(rel, schema, parsed.value) : [];
         return { problems, value: parsed.value, bad: problems.length > 0 };
     }
-    const problems = rel.endsWith('.vtt') ? vttProblems(text).map((p) => problem({ file: rel, line: p.line, col: 1, message: p.message })) : [];
+    const problems = rel.endsWith('.vtt') ? ft().Lint.checkVTT(text).map((p) => problem({ file: rel, line: p.line, col: 1, message: p.message })) : [];
     return { problems, value: text, bad: false };
 }
 
@@ -309,9 +280,8 @@ function folderProblems(state, only, duration) {
         if (checked.bad) { bad.add(rel); }
     }
 
-    // Invalid JSON is reported above, with its position.
     for (const p of Lint.checkFolder(files)) {
-        if (!/^Is not valid JSON/.test(p.message)) { problems.push(problem({ file: p.path, message: p.message })); }
+        if (!singleFile(p)) { problems.push(problem({ file: p.path, message: p.message })); }
     }
 
     // Lint reads data that follows the schemas only: hypervideos with a bad file are left to the problems above.
@@ -389,7 +359,7 @@ function blockProblems(state) {
 
     const pointerOf = bundlePointers(files, kind);
     for (const rel of Object.keys(files).filter((rel) => rel.endsWith('.vtt')).sort()) {
-        for (const p of vttProblems(files[rel])) {
+        for (const p of ft().Lint.checkVTT(files[rel])) {
             problems.push(problem({ file: page, pointer: pointerOf(rel), message: 'Line ' + p.line + ' of the subtitles: ' + p.message }));
         }
     }
@@ -410,7 +380,7 @@ function pageProblems(state, only, duration) {
     const files     = block.files,
           pointerOf = bundlePointers(files, block.kind);
 
-    for (const p of Lint.checkFolder(files)) {
+    for (const p of Lint.checkFolder(files).filter((p) => !singleFile(p))) {
         problems.push(problem({ file: page, pointer: pointerOf(p.path), message: p.path + ': ' + p.message }));
     }
 

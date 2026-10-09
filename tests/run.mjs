@@ -510,7 +510,7 @@ describe('the scripts', () => {
         assert.equal(stop.code, 0);
         assert.equal(stop.json.decision, 'block');
         assert.ok(stop.json.reason.startsWith('FrameTrail found problems in the data you changed.\n\nIn _data:\nhypervideos/1/annotations/' + id + '.json\n  error  Has no entry in annotations/_index.json; FrameTrail does not load these annotations.'), stop.json.reason);
-        assert.ok(!stop.json.reason.includes('empty-required'), 'the hotspot without a target was there before');
+        assert.ok(!stop.json.reason.includes('missing-license'), 'the media without a licence were there before');
         assert.deepEqual(s.stop(), { code: 0, stdout: '', stderr: '', json: null }, 'reported once');
         s.change(path.join(data, 'hypervideos', '1', 'hypervideo.json'), editJSON((h) => { h.clips[0].duration = 600; h.chapters.push({ start: 9999, title: 'Late' }); }));
         const late = s.stop();
@@ -531,7 +531,7 @@ describe('the scripts', () => {
         assert.match(stop.json.hookSpecificOutput.additionalContext, /^FrameTrail warns about the data you changed\.[\s\S]*overlay "Card" \(text, created 2026-10-09T12:00:00\.000Z\): Covers the same area as overlay 2026-10-07T09:30:00\.137Z from 4 s to 12 s\. \[overlay-overlap\]/);
         const post = s.hook('post', { tool_name: 'Edit', tool_input: { file_path: file } }, 'unseen');
         assert.equal(post.code, 0);
-        assert.match(s.stop('unseen').json.reason, /empty-required/, 'no baseline: the hotspot without a target counts');
+        assert.match(s.stop('unseen').json.hookSpecificOutput.additionalContext, /missing-license/, 'no baseline: the media without a licence count');
     }));
 
     test('touchedHypervideos: the hypervideos whose files changed; all when an index changed', withScratch((s) => {
@@ -544,13 +544,16 @@ describe('the scripts', () => {
         assert.deepEqual([...Check.touchedHypervideos(before, after('config.json', (text) => text + ' '))], []);
     }));
 
-    test('vttProblems: the header, cue timings as FrameTrail\'s parser reads them, cues that end before they start', () => {
-        assert.deepEqual(Check.vttProblems('WEBVTT\n\n1\n00:01.000 --> 00:02.500\nHello\n\n1:00:01.000 --> 1:00:02.000 align:start\nLater'), []);
-        assert.deepEqual(Check.vttProblems(String.fromCharCode(0xFEFF) + 'WEBVTT - with a title\r\n\r\n00:01.000 --> 00:02.000\r\nHi'), []);
-        assert.deepEqual(Check.vttProblems('00:01.000 --> 00:02.000\nHi').map((p) => p.line), [1]);
-        assert.deepEqual(Check.vttProblems('WEBVTT\n\n00:01,000 --> 00:02.000\nA\n\n00:01.00 --> 00:02.000\nB\n\n00:03.000 --> 00:02.000\nC').map((p) => p.line), [3, 6, 9]);
-        assert.match(Check.vttProblems('WEBVTT\n\n00:03.000 --> 00:03.000\nC')[0].message, /ends at or before its start/);
-    });
+    test('WebVTT the player cannot read is reported once, by FrameTrail\'s checkVTT, in a folder and in a project file', withScratch((s) => {
+        const data = s.folder('all-types'), vtt = path.join(data, 'hypervideos', '1', 'subtitles', 'en.vtt');
+        fs.writeFileSync(vtt, fs.readFileSync(vtt, 'utf8').replace('00:00:00.500 --> 00:00:04.000', '00:00:00,500 --> 00:00:04.000'));
+        const folder = Check.problemsOf(Check.readState(data, 'folder')).filter((p) => p.file === 'hypervideos/1/subtitles/en.vtt');
+        assert.deepEqual(folder.map((p) => [p.line, p.message.slice(0, 40)]), [[4, 'The cue timing "00:00:00,500 --> 00:00:0']]);
+        const page = path.join(s.dir, 'page.html');
+        fs.writeFileSync(page, HTMLFormat.writeProject(readFolder(data), null, { library: { css: '', js: '' }, datapath: './' }));
+        const inPage = Check.problemsOf(Check.readState(page, 'file')).filter((p) => /cue timing/.test(p.message));
+        assert.deepEqual(inPage.map((p) => [p.pointer, p.message.slice(0, 20)]), [['/hypervideos/1/subtitles/en', 'Line 4 of the subtit']]);
+    }));
 
     test('user-id.mjs: a guest\'s id, as FrameTrail computes it', () => {
         const run = spawnSync(process.execPath, [USER_ID, 'Anna', 'B'], { encoding: 'utf8' });
