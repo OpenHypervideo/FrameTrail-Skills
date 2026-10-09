@@ -1,0 +1,28 @@
+{
+    "description": "FrameTrail's validator and lint on Claude's changes to a FrameTrail _data folder or project file: each changed file at once, the whole data when Claude is done. A change to the data folder of a FrameTrail server is put to the user first.",
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs\" --hook=pre", "timeout": 30 }
+                ]
+            }
+        ],
+        "PostToolUse": [
+            {
+                "matcher": "Write|Edit|MultiEdit",
+                "hooks": [
+                    { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs\" --hook=post", "timeout": 30 }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs\" --hook=stop", "timeout": 120 }
+                ]
+            }
+        ]
+    }
+}

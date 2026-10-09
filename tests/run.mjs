@@ -5,17 +5,21 @@
  *     node tests/run.mjs --drift     # after syncing a newer FrameTrail (drift.yml): the README's version is not checked
  *
  * - The vendored files: exactly those of vendor.lock.json, unchanged; the scripts load under require() and work together on the vendored fixtures.
- * - The plugin: the marketplace and plugin manifests, what plugin/ holds, each skill's frontmatter.
+ * - The plugin: the marketplace and plugin manifests, what plugin/ holds, each skill's frontmatter, the hooks.
+ * - The scripts: check.mjs by hand and as the hooks (run as Claude Code runs them, on copies of the vendored fixtures), user-id.mjs.
  * - The text written here for the model, tested against the vendored truth: JSON examples tagged with a schema validate, type names exist, the files it names exist (see CLAUDE.md, "Text").
  */
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { VENDORED, LOCK, sha256, filesBelow, presentFiles, rewriteLinks } from '../dev/sync.mjs';
+import * as Check from '../plugin/scripts/check.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -216,7 +220,8 @@ function textProblems(text, { file, skillDir }) {
           types    = knownTypes(),
           lineOf   = (index) => text.slice(0, index).split('\n').length;
 
-    for (const m of text.matchAll(/^```json[ \t]+frametrail:(\S+)[ \t]*\n([\s\S]*?)^```[ \t]*$/gm)) {
+    // Fences may be indented (inside a list item).
+    for (const m of text.matchAll(/^[ \t]*```json[ \t]+frametrail:(\S+)[ \t]*\n([\s\S]*?)^[ \t]*```[ \t]*$/gm)) {
         const [name, fragment] = m[1].split('#'),
               schema = name + '.schema.json' + (fragment ? '#' + fragment : '');
         let data;
@@ -264,6 +269,15 @@ describe('text written for the model', () => {
         });
     }
 
+    test('the data block\'s escape is written as it is: \\u003c, never lost to "<"', () => {
+        const skill = path.join(PLUGIN, 'skills', 'frametrail-hypervideo');
+        for (const file of ['SKILL.md', 'references/project-file.md', 'references/layout.md']) {
+            const text = fs.readFileSync(path.join(skill, file), 'utf8');
+            assert.ok(text.includes('`\\u003c`'), file + ' names \\u003c');
+            assert.ok(!/written (as )?`<`/.test(text), file + ' says "<" is written as "<"');
+        }
+    });
+
     test('the checks find what they are meant to find', () => {
         const skillDir = path.join(PLUGIN, 'skills', 'frametrail-hypervideo'),
               file     = path.join(skillDir, 'SKILL.md'),
@@ -285,15 +299,276 @@ describe('text written for the model', () => {
             '```json frametrail:content-item', item('triangle'), '```',
             '```json frametrail:content-item', '{ "type": ', '```',
             '```json frametrail:nothing', '{}', '```',
-            '[missing](references/missing.md), ${CLAUDE_PLUGIN_ROOT}/scripts/missing.mjs'
+            '[missing](references/missing.md), ${CLAUDE_PLUGIN_ROOT}/scripts/missing.mjs',
+            '1. In a list:', '', '   ```json frametrail:hypervideos-index', '   { "hypervideos": "none" }', '   ```'
         ].join('\n');
         const problems = textProblems(broken, { file, skillDir });
-        assert.equal(problems.length, 7, problems.join('\n'));
+        assert.equal(problems.length, 8, problems.join('\n'));
+        assert.match(problems.join('\n'), /does not follow hypervideos-index\.schema\.json/, 'an indented fence is checked too');
         assert.match(problems.join('\n'), /no type `slideshow`[\s\S]*no type `gif`/);
         assert.match(problems.join('\n'), /line 2: the example does not follow content-item\.schema\.json/);
         assert.match(problems.join('\n'), /: the example is no JSON/);
         assert.match(problems.join('\n'), /no schema nothing\.schema\.json/);
         assert.match(problems.join('\n'), /no file references\/missing\.md[\s\S]*no file \$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/missing\.mjs/);
+    });
+
+});
+
+
+/* ---------------------------------------------------------------------- */
+/*  The scripts                                                           */
+/* ---------------------------------------------------------------------- */
+
+const CHECK   = path.join(PLUGIN, 'scripts', 'check.mjs');
+const USER_ID = path.join(PLUGIN, 'scripts', 'user-id.mjs');
+
+// A JSON file's text changed by fn, written as FrameTrail writes it.
+const editJSON = (fn) => (text) => { const value = JSON.parse(text); fn(value); return JSON.stringify(value, null, 4) + '\n'; };
+
+/**
+ * A temporary folder for copies of the vendored fixtures, with the scripts run on it as Claude Code runs the hooks: the hook's JSON on stdin, CLAUDE_PLUGIN_DATA a folder of its own.
+ */
+function scratch() {
+
+    const dir  = fs.mkdtempSync(path.join(os.tmpdir(), 'frametrail-skills-')),
+          env  = Object.assign({}, process.env, { CLAUDE_PLUGIN_DATA: path.join(dir, 'plugin-data') });
+
+    const self = {
+        dir,
+        sessions: path.join(dir, 'plugin-data', 'sessions'),
+        // A copy of a fixture folder.
+        folder(name, as = '_data') {
+            const target = path.join(dir, as);
+            fs.cpSync(path.join(ROOT, VENDORED.fixtures, name), target, { recursive: true });
+            return target;
+        },
+        // A fixture folder as a project file.
+        page(name, as = name + '.html') {
+            const target = path.join(dir, as);
+            fs.writeFileSync(target, HTMLFormat.writeProject(readFolder(path.join(ROOT, VENDORED.fixtures, name)), null, { library: { css: '', js: '' }, datapath: './' }));
+            return target;
+        },
+        hook(kind, input = {}, session = 's') {
+            const r = spawnSync(process.execPath, [CHECK, '--hook=' + kind], {
+                input: JSON.stringify(Object.assign({ session_id: session, cwd: dir, hook_event_name: kind }, input)), env, encoding: 'utf8'
+            });
+            return { code: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim(), json: r.stdout.trim() ? JSON.parse(r.stdout) : null };
+        },
+        // A tool call that writes a file: pre, the change (text → text; null for a new file), post.
+        change(file, fn, session = 's') {
+            const input = { tool_name: 'Edit', tool_input: { file_path: file } },
+                  pre   = self.hook('pre', input, session);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, fn(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null));
+            return { pre, post: self.hook('post', input, session) };
+        },
+        stop(session = 's') { return self.hook('stop', { stop_hook_active: false }, session); },
+        remove() { fs.rmSync(dir, { recursive: true, force: true }); }
+    };
+
+    return self;
+
+}
+
+// Runs a test body on a scratch folder and removes it afterwards.
+const withScratch = (body) => async () => { const s = scratch(); try { return await body(s); } finally { s.remove(); } };
+
+describe('the scripts', () => {
+
+    test('check.mjs by hand: the fixtures have only lint findings, and a fixture as a project file has the same ones', withScratch((s) => {
+        for (const name of fs.readdirSync(path.join(ROOT, VENDORED.fixtures)).filter((entry) => !entry.startsWith('.'))) {
+            const folder = Check.problemsOf(Check.readState(path.join(ROOT, VENDORED.fixtures, name), 'folder')),
+                  page   = Check.problemsOf(Check.readState(s.page(name), 'file'));
+            assert.deepEqual(folder.filter((p) => !p.rule), [], name + ': ' + Check.formatProblems(folder.filter((p) => !p.rule)));
+            assert.deepEqual(page.filter((p) => !p.rule), [], name + ' as a page: ' + Check.formatProblems(page.filter((p) => !p.rule)));
+            assert.deepEqual(page.map((p) => p.key).sort(), folder.map((p) => p.key).sort(), name + ': the same lint findings');
+        }
+        const run = spawnSync(process.execPath, [CHECK, path.join(ROOT, VENDORED.fixtures, 'zoom-in-on-dna')], { encoding: 'utf8' });
+        assert.equal(run.status, 0, 'warnings only: exit 0');
+        assert.match(run.stdout, /\(_data folder\)\n[\s\S]*0 errors, 6 warnings\.$/m);
+        const none = spawnSync(process.execPath, [CHECK, s.dir], { encoding: 'utf8' });
+        assert.equal(none.status, 2);
+        assert.match(none.stderr, /^Not FrameTrail data/);
+    }));
+
+    test('findRoot: a page with a data block, else the nearest _data folder; serverInstance: .collab or accounts', withScratch((s) => {
+        const data = s.folder('all-types'), page = s.page('all-types');
+        assert.deepEqual(Check.findRoot(path.join(data, 'hypervideos', '1', 'annotations', 'new.json')), { kind: 'folder', root: data });
+        assert.deepEqual(Check.findRoot(data), { kind: 'folder', root: data });
+        assert.deepEqual(Check.findRoot(page), { kind: 'file', root: page });
+        fs.writeFileSync(path.join(s.dir, 'plain.html'), '<!DOCTYPE html><p>data-frametrail</p>');
+        assert.equal(Check.findRoot(path.join(s.dir, 'plain.html')), null);
+        assert.equal(Check.findRoot(path.join(s.dir, 'notes.md')), null);
+        assert.equal(Check.serverInstance(data), null);
+        fs.writeFileSync(path.join(data, 'users.json'), JSON.stringify({ 'user-increment': 1, user: { 1: { name: 'demo', passwd: 'x' } } }));
+        assert.match(Check.serverInstance(data), /passwords/);
+        fs.mkdirSync(path.join(data, '.collab'));
+        assert.match(Check.serverInstance(data), /\.collab/);
+    }));
+
+    test('post, in a _data folder: the changed file\'s JSON and schema at once; nothing for valid changes and other files', withScratch((s) => {
+        const data = s.folder('all-types'),
+              file = path.join(data, 'hypervideos', '1', 'hypervideo.json');
+        let { post } = s.change(file, editJSON((h) => { h.chapters.push({ start: '99', title: 'Late' }); }));
+        assert.equal(post.code, 2);
+        assert.match(post.stderr, /hypervideos\/1\/hypervideo\.json\n {2}error {2}\/chapters\/3\/start: must be number, is string/);
+        ({ post } = s.change(file, (text) => text.replace('"title": "Late"', '"title": "Late",')));
+        assert.equal(post.code, 2);
+        const lines = fs.readFileSync(file, 'utf8').split('\n'), at = lines.findIndex((line) => line.includes('"title": "Late",'));
+        assert.match(post.stderr, new RegExp('line ' + (at + 2) + ':\\d+: Is not valid JSON'));
+        ({ post } = s.change(file, (text) => editJSON((h) => { h.chapters[3] = { start: 50, title: 'Late' }; })(text.replace('"title": "Late",', '"title": "Late"'))));
+        assert.deepEqual([post.code, post.stdout, post.stderr], [0, '', '']);
+        ({ post } = s.change(path.join(data, 'hypervideos', '1', 'subtitles', 'en.vtt'), (text) => text.replace('00:00:00.500 --> 00:00:04.000', '00:00:00,500 --> 00:00:04.000')));
+        assert.equal(post.code, 2);
+        assert.match(post.stderr, /line 4:1: The cue timing "00:00:00,500 --> 00:00:04\.000" is not/);
+        for (const other of [path.join(s.dir, 'notes.md'), path.join(data, 'users.json'), path.join(data, 'custom.css')]) {
+            ({ post } = s.change(other, () => '{ not json'));
+            assert.deepEqual([post.code, post.stdout, post.stderr], [0, '', ''], other);
+        }
+    }));
+
+    test('post, in a project file: the data block\'s JSON (where in the page), "<" written as FrameTrail writes it, the bundle\'s schema', withScratch((s) => {
+        const page = s.page('all-types');
+        let { post } = s.change(page, (html) => html.replace('"title": "Introduction"', '"title": "Introduction" oops'));
+        assert.equal(post.code, 2);
+        const html = fs.readFileSync(page, 'utf8'), index = html.indexOf(' oops') + 1,
+              line = html.slice(0, index).split('\n').length, col = index - html.lastIndexOf('\n', index - 1);
+        assert.match(post.stderr, new RegExp('line ' + line + ':' + col + ': The data block is not valid JSON'));
+        assert.ok(!post.stderr.includes('</script'), 'the block ends where it should');
+
+        ({ post } = s.change(page, (text) => text.replace('"title": "Introduction" oops', '"title": "<b>Introduction</b>"')));
+        assert.equal(post.code, 0);
+        assert.match(post.json.hookSpecificOutput.additionalContext, /^FrameTrail check: wrote the 2 "<" in the data block of all-types\.html as \\u003c, as FrameTrail writes them\. Read the lines again/);
+        const escaped = fs.readFileSync(page, 'utf8');
+        assert.ok(escaped.includes('"title": "\\u003cb>Introduction\\u003c/b>"'));
+        assert.equal(HTMLFormat.firstBlockText(escaped).indexOf('<'), -1);
+        assert.equal(HTMLFormat.parse(escaped)[0].bundle.hypervideos['1'].hypervideo.chapters[0].title, '<b>Introduction</b>');
+        assert.equal(escaped.replace(HTMLFormat.firstBlockText(escaped), ''), html.replace(HTMLFormat.firstBlockText(html), ''), 'the rest of the page as it was');
+
+        ({ post } = s.change(page, (text) => text.replace('"title": "\\u003cb>Introduction\\u003c/b>"', '"title": "</script><b>Intro</b>"')));
+        assert.equal(post.code, 2);
+        assert.match(post.stderr, /The data block is not valid JSON: .*The block may end early: a "<\/script" inside it ends it, so write that as <\\\/script\./);
+        ({ post } = s.change(page, (text) => text.replace('"title": "</script><b>Intro</b>"', '"title": "Introduction"')));
+        assert.equal(post.code, 0);
+
+        // Changes made through Bash: the check by hand finds a "<", --escape rewrites it.
+        fs.writeFileSync(page, fs.readFileSync(page, 'utf8').replace('"title": "Introduction"', '"title": "<i>Introduction</i>"'));
+        assert.match(Check.formatProblems(Check.problemsOf(Check.readState(page, 'file'))), /The data block contains "<" \(2 in all\)\. FrameTrail writes every "<" in it as \\u003c/);
+        const run = spawnSync(process.execPath, [CHECK, '--escape', page], { encoding: 'utf8' });
+        assert.deepEqual([run.status, run.stdout.trim()], [0, 'Wrote the 2 "<" in the data block of ' + page + ' as \\u003c.']);
+        assert.equal(HTMLFormat.firstBlockText(fs.readFileSync(page, 'utf8')).indexOf('<'), -1);
+
+        ({ post } = s.change(page, (text) => {
+            const bundle = HTMLFormat.parse(text)[0].bundle;
+            bundle.hypervideos['1'].hypervideo.chapters[0] = { start: 'x', title: 'Introduction' };
+            return HTMLFormat.replaceBlock(text, bundle);
+        }));
+        assert.equal(post.code, 2);
+        assert.match(post.stderr, /\/hypervideos\/1\/hypervideo\/chapters\/0\/start: must be number, is string/);
+        ({ post } = s.change(page, (text) => text.replace(/<script type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/, '')));
+        assert.equal(post.code, 2);
+        assert.match(post.stderr, /Has no FrameTrail data block/);
+    }));
+
+    test('pre: a server\'s data folder is put to the user; the baseline is taken once, also by tool calls in parallel', withScratch(async (s) => {
+        const data = s.folder('all-types'),
+              file = path.join(data, 'config.json'),
+              edit = { tool_name: 'Edit', tool_input: { file_path: file } };
+        assert.deepEqual(s.hook('pre', edit), { code: 0, stdout: '', stderr: '', json: null });
+        const [record] = fs.readdirSync(path.join(s.sessions, 's'));
+        const baseline = readJSON(path.join(s.sessions, 's', record)).baseline;
+        assert.equal(baseline.texts['config.json'], fs.readFileSync(file, 'utf8'));
+        assert.ok(!('users.json' in baseline.texts) && !Object.keys(baseline.texts).some((rel) => rel.startsWith('resources/') && rel !== 'resources/_index.json'));
+        fs.writeFileSync(file, '{}');
+        s.hook('pre', edit);
+        assert.equal(readJSON(path.join(s.sessions, 's', record)).baseline.texts['config.json'], baseline.texts['config.json'], 'kept from the first touch');
+
+        const env = Object.assign({}, process.env, { CLAUDE_PLUGIN_DATA: path.join(s.dir, 'plugin-data') }),
+              once = () => new Promise((resolve) => {
+                  const child = spawn(process.execPath, [CHECK, '--hook=pre'], { env });
+                  child.on('close', resolve);
+                  child.stdin.end(JSON.stringify({ session_id: 'parallel', cwd: s.dir, tool_name: 'Edit', tool_input: { file_path: file } }));
+              });
+        assert.deepEqual(await Promise.all([once(), once(), once(), once()]), [0, 0, 0, 0]);
+        assert.deepEqual(fs.readdirSync(path.join(s.sessions, 'parallel')), [record], 'one record, no lock left');
+
+        fs.mkdirSync(path.join(data, '.collab'));
+        const ask = s.hook('pre', edit);
+        assert.equal(ask.json.hookSpecificOutput.hookEventName, 'PreToolUse');
+        assert.equal(ask.json.hookSpecificOutput.permissionDecision, 'ask');
+        assert.match(ask.json.hookSpecificOutput.permissionDecisionReason, /^_data is the data folder of a FrameTrail server \(it has a \.collab folder\)/);
+    }));
+
+    test('stop: new errors block, once; what the baseline had is left out; an annotation file needs its index entry', withScratch((s) => {
+        const data  = s.folder('all-types'),
+              dir   = path.join(data, 'hypervideos', '1', 'annotations'),
+              id    = Serializer.guestUserID('Ada'),
+              guest = path.join(dir, id + '.json');
+        assert.deepEqual(s.stop(), { code: 0, stdout: '', stderr: '', json: null }, 'nothing recorded');
+        s.change(guest, () => JSON.stringify(readJSON(path.join(dir, '1.json')).slice(0, 1).map((item) => Object.assign(item, { creator: { nickname: 'Ada', type: 'Person', id } })), null, 4));
+        const stop = s.stop();
+        assert.equal(stop.code, 0);
+        assert.equal(stop.json.decision, 'block');
+        assert.ok(stop.json.reason.startsWith('FrameTrail found problems in the data you changed.\n\nIn _data:\nhypervideos/1/annotations/' + id + '.json\n  error  Has no entry in annotations/_index.json; FrameTrail does not load these annotations.'), stop.json.reason);
+        assert.ok(!stop.json.reason.includes('empty-required'), 'the hotspot without a target was there before');
+        assert.deepEqual(s.stop(), { code: 0, stdout: '', stderr: '', json: null }, 'reported once');
+        s.change(path.join(data, 'hypervideos', '1', 'hypervideo.json'), editJSON((h) => { h.clips[0].duration = 600; h.chapters.push({ start: 9999, title: 'Late' }); }));
+        const late = s.stop();
+        assert.equal(late.json.decision, 'block');
+        assert.match(late.json.reason, /hypervideos\/1\/hypervideo\.json\n {2}error {2}hypervideo 1 "All Item Types", chapter "Late" at 9999 s: Is at 9999 s, outside the video \(0 s to 600 s\); the player never reaches it\. \[item-outside-video\]/);
+        fs.rmSync(data, { recursive: true });
+        assert.deepEqual(s.stop(), { code: 0, stdout: '', stderr: '', json: null }, 'a root that is gone');
+        assert.deepEqual(fs.readdirSync(path.join(s.sessions, 's')), []);
+    }));
+
+    test('stop: new warnings alone go back as context; without a baseline everything counts', withScratch((s) => {
+        const data = s.folder('all-types'),
+              file = path.join(data, 'hypervideos', '1', 'hypervideo.json');
+        s.change(file, editJSON((h) => { h.contents.push(Object.assign(JSON.parse(JSON.stringify(h.contents[0])), { created: '2026-10-09T12:00:00.000Z' })); }));
+        const stop = s.stop();
+        assert.equal(stop.json.decision, undefined);
+        assert.equal(stop.json.hookSpecificOutput.hookEventName, 'Stop');
+        assert.match(stop.json.hookSpecificOutput.additionalContext, /^FrameTrail warns about the data you changed\.[\s\S]*overlay "Card" \(text, created 2026-10-09T12:00:00\.000Z\): Covers the same area as overlay 2026-10-07T09:30:00\.137Z from 4 s to 12 s\. \[overlay-overlap\]/);
+        const post = s.hook('post', { tool_name: 'Edit', tool_input: { file_path: file } }, 'unseen');
+        assert.equal(post.code, 0);
+        assert.match(s.stop('unseen').json.reason, /empty-required/, 'no baseline: the hotspot without a target counts');
+    }));
+
+    test('touchedHypervideos: the hypervideos whose files changed; all when an index changed', withScratch((s) => {
+        const data   = s.folder('animation'),
+              before = Check.readState(data, 'folder'),
+              after  = (rel, fn) => { const state = Check.readState(data, 'folder'); state.texts[rel] = fn(state.texts[rel]); return state; };
+        assert.deepEqual([...Check.touchedHypervideos(before, after('hypervideos/10/annotations/1.json', (text) => text + ' '))], ['10']);
+        assert.equal(Check.touchedHypervideos(before, after('resources/_index.json', (text) => text + ' ')), null);
+        assert.equal(Check.touchedHypervideos(null, before), null);
+        assert.deepEqual([...Check.touchedHypervideos(before, after('config.json', (text) => text + ' '))], []);
+    }));
+
+    test('vttProblems: the header, cue timings as FrameTrail\'s parser reads them, cues that end before they start', () => {
+        assert.deepEqual(Check.vttProblems('WEBVTT\n\n1\n00:01.000 --> 00:02.500\nHello\n\n1:00:01.000 --> 1:00:02.000 align:start\nLater'), []);
+        assert.deepEqual(Check.vttProblems(String.fromCharCode(0xFEFF) + 'WEBVTT - with a title\r\n\r\n00:01.000 --> 00:02.000\r\nHi'), []);
+        assert.deepEqual(Check.vttProblems('00:01.000 --> 00:02.000\nHi').map((p) => p.line), [1]);
+        assert.deepEqual(Check.vttProblems('WEBVTT\n\n00:01,000 --> 00:02.000\nA\n\n00:01.00 --> 00:02.000\nB\n\n00:03.000 --> 00:02.000\nC').map((p) => p.line), [3, 6, 9]);
+        assert.match(Check.vttProblems('WEBVTT\n\n00:03.000 --> 00:03.000\nC')[0].message, /ends at or before its start/);
+    });
+
+    test('user-id.mjs: a guest\'s id, as FrameTrail computes it', () => {
+        const run = spawnSync(process.execPath, [USER_ID, 'Anna', 'B'], { encoding: 'utf8' });
+        assert.deepEqual([run.status, run.stdout], [0, 'guest_anna-b-919e0619\n']);
+        assert.equal(spawnSync(process.execPath, [USER_ID], { encoding: 'utf8' }).status, 2);
+    });
+
+    test('hooks.json: check.mjs before and after Write, Edit and MultiEdit, and at the stop', () => {
+        const hooks = readJSON(path.join(PLUGIN, 'hooks', 'hooks.json'));
+        assert.ok(hooks.description);
+        assert.deepEqual(Object.keys(hooks.hooks).sort(), ['PostToolUse', 'PreToolUse', 'Stop']);
+        const expected = { PreToolUse: 'pre', PostToolUse: 'post', Stop: 'stop' };
+        for (const [event, groups] of Object.entries(hooks.hooks)) {
+            assert.equal(groups.length, 1, event);
+            assert.equal(groups[0].matcher, (event === 'Stop') ? undefined : 'Write|Edit|MultiEdit', event);
+            assert.deepEqual(groups[0].hooks.map((h) => [h.type, h.command]), [['command', 'node "${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs" --hook=' + expected[event]]], event);
+        }
+        assert.ok(fs.existsSync(CHECK));
     });
 
 });

@@ -1,11 +1,11 @@
 {
     "frametrail": {
-        "version": "v1.4.1-3-g742fe53",
-        "commit": "742fe53369d397f2db22d50c5d4bc33d0290d4a7"
+        "version": "v1.4.1-4-ge065b6d",
+        "commit": "e065b6df49540260e9b0b6e0da9eaf170a57f8f1"
     },
     "files": {
         "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "044e3ff4a7560ac3bee8c9ac7cd74cf98e43b0bd85d29c3cf45c58b1a164ca41",
-        "plugin/skills/frametrail-hypervideo/references/frametrail/HTML-FORMAT.md": "370a32b89aa659f169c5c8f15fbf7f6a645aed592c58d3e1661b7ad7c05c001b",
+        "plugin/skills/frametrail-hypervideo/references/frametrail/HTML-FORMAT.md": "3ff9e3ed88035983890b25fd054e7304a33db4f759e2ad7b6393cafef2573d1b",
         "plugin/skills/frametrail-hypervideo/references/frametrail/TYPES.md": "4c9b2b8711370cf93c72f0a01b96acdc2b24cdea35f23941b59695bc33de2bb6",
         "plugin/vendor/frametrail/LICENSE.md": "d6da78cd95206efbd19f532dcff5675e90ce25ec6e1f8443871488e6124767b7",
         "plugin/vendor/frametrail/THIRD-PARTY-NOTICES.md": "39d1e177c821f3935aebee0e9fc310bdcda98dd9f86e177ba0d496d6926fed7e",
