@@ -1,0 +1,49 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "item": {
+                "kind": "overlays",
+                "type": "text",
+                "start": [
+                    9.5,
+                    10.5
+                ],
+                "end": [
+                    19.5,
+                    20.5
+                ],
+                "text": "welcome to lecture 3",
+                "box": {
+                    "top": [
+                        0,
+                        30
+                    ]
+                }
+            }
+        },
+        {
+            "item": {
+                "kind": "overlays",
+                "type": "hotspot",
+                "start": [
+                    129.5,
+                    130.5
+                ],
+                "end": [
+                    134.5,
+                    135.5
+                ],
+                "attributes": {
+                    "action": "jumpToTime",
+                    "actionTarget": "300"
+                }
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

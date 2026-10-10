@@ -1,0 +1,12 @@
+{
+    "setup": "node-app",
+    "checks": [
+        {
+            "file": {
+                "path": "package.json",
+                "pointer": "/scripts/test",
+                "matches": "node --test"
+            }
+        }
+    ]
+}

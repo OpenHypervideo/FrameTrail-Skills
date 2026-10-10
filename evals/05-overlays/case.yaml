@@ -1,0 +1,39 @@
+{
+    "schema_version": "1.0",
+    "name": "overlays",
+    "description": "A text overlay with a time span and a place, and a hotspot whose click jumps in the video.",
+    "tags": [
+        "core",
+        "items"
+    ],
+    "plugins": [
+        "../../plugin"
+    ],
+    "context": {
+        "scaffold_script": "scaffold.sh"
+    },
+    "execution": {
+        "prompt": "Add two overlays to the lecture: a text overlay saying \"Welcome to lecture 3\" from 0:10 to 0:20 across the top of the video, and a hotspot at 2:10 for 5 seconds that jumps to 5:00 when clicked.",
+        "max_turns": 30,
+        "timeout_seconds": 600,
+        "allowed_tools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "Edit",
+            "Write",
+            "Bash",
+            "Skill"
+        ]
+    },
+    "runs": 2,
+    "graders": [
+        {
+            "type": "tool_used",
+            "name": "skill-fired",
+            "tool": "Skill",
+            "input_match": "frametrail-hypervideo",
+            "arm": "with-only"
+        }
+    ]
+}

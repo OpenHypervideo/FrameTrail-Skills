@@ -1,0 +1,19 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "noChanges": true
+        },
+        {
+            "answer": "introduction"
+        },
+        {
+            "answer": "membranes"
+        },
+        {
+            "answer": "transport"
+        }
+    ]
+}

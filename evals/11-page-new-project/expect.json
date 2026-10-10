@@ -1,0 +1,35 @@
+{
+    "setup": "video-only",
+    "root": "trip.html",
+    "hypervideo": {
+        "name": "^field trip$"
+    },
+    "checks": [
+        {
+            "hypervideo": {
+                "name": "^field trip$",
+                "video": "field-trip.mp4"
+            }
+        },
+        {
+            "chapter": {
+                "from": 0,
+                "to": 0,
+                "title": "^start$"
+            }
+        },
+        {
+            "chapter": {
+                "from": 5,
+                "to": 5,
+                "title": "^arrival$"
+            }
+        },
+        {
+            "valid": true
+        },
+        {
+            "escaped": true
+        }
+    ]
+}

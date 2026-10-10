@@ -1,0 +1,25 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "item": {
+                "kind": "annotations",
+                "by": "^ada$",
+                "start": [
+                    59.5,
+                    60.5
+                ],
+                "end": [
+                    89.5,
+                    90.5
+                ],
+                "text": "diffusion needs no energy"
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

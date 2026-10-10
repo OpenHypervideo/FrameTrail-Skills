@@ -1,0 +1,32 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "chapter": {
+                "from": 510,
+                "to": 510,
+                "title": "^summary$"
+            }
+        },
+        {
+            "noChapter": {
+                "from": 600,
+                "to": 100000
+            }
+        },
+        {
+            "chapters": {
+                "min": 4,
+                "max": 4
+            }
+        },
+        {
+            "answer": "10:00|10 min|600|ten minutes"
+        },
+        {
+            "valid": true
+        }
+    ]
+}

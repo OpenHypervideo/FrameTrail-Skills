@@ -9,9 +9,10 @@
  *
  * What is copied (VENDORED below), keeping FrameTrail's relative layout where the scripts require each other:
  *
- * - src/_shared/frametrail-core/serialization/*.js, schema/*.js → plugin/vendor/frametrail/, with LICENSE.md, THIRD-PARTY-NOTICES.md and a package.json that makes Node read the scripts as CommonJS;
+ * - src/_shared/frametrail-core/serialization/*.js, schema/*.js → plugin/vendor/frametrail/, with LICENSE.md, THIRD-PARTY-NOTICES.md and a package.json that makes Node read the scripts as CommonJS and names the FrameTrail release they are based on (frametrailRelease: the latest tag at the commit, without its "v"; the library a new project file loads from jsDelivr);
  * - docs/DATA-MODEL.md, HTML-FORMAT.md, TYPES.md → plugin/skills/frametrail-hypervideo/references/frametrail/, links to each other kept, links to the rest of FrameTrail pointed at its repository;
- * - tests/fixtures/data/<name>/ → tests/fixtures/frametrail/<name>/.
+ * - tests/fixtures/data/<name>/ → tests/fixtures/frametrail/<name>/;
+ * - tests/fixtures/lint/data/*.json (data sets as bundles: the lecture, a project, legacy forms) → tests/fixtures/frametrail-bundles/, which the evaluation's workspaces are made from.
  *
  * Each target folder belongs to the sync: files there that FrameTrail no longer has are removed. vendor.lock.json records FrameTrail's version (git describe) and commit, and the SHA-256 of every file written; tests/run.mjs checks the files against it.
  */
@@ -41,15 +42,30 @@ const SCRIPTS = [
 const DOCS     = ['docs/DATA-MODEL.md', 'docs/HTML-FORMAT.md', 'docs/TYPES.md'];
 const NOTICES  = ['LICENSE.md', 'THIRD-PARTY-NOTICES.md'];
 const FIXTURES = 'tests/fixtures/data';
+const BUNDLES  = 'tests/fixtures/lint/data';
 
 // The folders the sync owns, relative to this repository.
 export const VENDORED = {
     scripts:  'plugin/vendor/frametrail',
     docs:     'plugin/skills/frametrail-hypervideo/references/frametrail',
-    fixtures: 'tests/fixtures/frametrail'
+    fixtures: 'tests/fixtures/frametrail',
+    bundles:  'tests/fixtures/frametrail-bundles'
 };
 
-const PACKAGE_JSON = '{\n    "type": "commonjs"\n}\n';
+/**
+ * The package.json of the vendored scripts: CommonJS, and the release they are based on (left out when there is none).
+ */
+export function packageJSON(release) {
+    return JSON.stringify(Object.assign({ type: 'commonjs' }, release ? { frametrailRelease: release } : {}), null, 4) + '\n';
+}
+
+/**
+ * The release a tag names, as jsDelivr and npm name it ("v1.4.1" → "1.4.1"), or null for a tag that names none.
+ */
+export function releaseOf(tag) {
+    const m = /^v?(\d+\.\d+\.\d+\S*)$/.exec(String(tag || '').trim());
+    return m ? m[1] : null;
+}
 
 
 /* ---------------------------------------------------------------------- */
@@ -98,15 +114,16 @@ export function vendoredFiles(frametrail, { allowDirty = false } = {}) {
         }
     }
 
-    let commit, version;
+    let commit, version, release;
     try {
         commit  = git(frametrail, 'rev-parse', 'HEAD');
         version = (() => { try { return git(frametrail, 'describe', '--tags'); } catch (e) { return commit.slice(0, 7); } })();
+        release = (() => { try { return releaseOf(git(frametrail, 'describe', '--tags', '--abbrev=0')); } catch (e) { return null; } })();
     } catch (e) {
         throw new Error('Not a git working copy: ' + frametrail);
     }
 
-    const sources = [core + 'serialization', core + 'schema'].concat(DOCS, NOTICES, [FIXTURES]),
+    const sources = [core + 'serialization', core + 'schema'].concat(DOCS, NOTICES, [FIXTURES, BUNDLES]),
           dirty   = git(frametrail, 'status', '--porcelain', '--', ...sources);
     if (dirty) {
         if (!allowDirty) { throw new Error('The FrameTrail working copy has changes where the files come from (--allow-dirty to sync anyway):\n' + dirty); }
@@ -118,7 +135,7 @@ export function vendoredFiles(frametrail, { allowDirty = false } = {}) {
 
     for (const script of SCRIPTS) { files[VENDORED.scripts + '/' + script] = read(core + script); }
     for (const notice of NOTICES) { files[VENDORED.scripts + '/' + notice] = read(notice); }
-    files[VENDORED.scripts + '/package.json'] = Buffer.from(PACKAGE_JSON);
+    files[VENDORED.scripts + '/package.json'] = Buffer.from(packageJSON(release));
 
     for (const doc of DOCS) {
         files[VENDORED.docs + '/' + path.posix.basename(doc)] = Buffer.from(rewriteLinks(read(doc).toString('utf8'), doc));
@@ -126,6 +143,9 @@ export function vendoredFiles(frametrail, { allowDirty = false } = {}) {
 
     for (const file of filesBelow(path.join(frametrail, FIXTURES))) {
         files[VENDORED.fixtures + '/' + file] = read(FIXTURES + '/' + file);
+    }
+    for (const file of filesBelow(path.join(frametrail, BUNDLES)).filter((file) => file.endsWith('.json'))) {
+        files[VENDORED.bundles + '/' + file] = read(BUNDLES + '/' + file);
     }
 
     return { files, frametrail: { version, commit } };

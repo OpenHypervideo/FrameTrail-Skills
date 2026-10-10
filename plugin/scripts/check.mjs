@@ -490,7 +490,16 @@ function labelOf(finding, parts) {
 }
 
 /**
- * The local media file whose length lint needs, or null: the video of a hypervideo's first clip, when the clip says neither its out point nor its duration and the video is a file (folder: resources/<src>; page: <datapath>resources/<src> beside the page, _data/ without a datapath), not a URL.
+ * The folder a root's media files are in, or null when they are not on this disk: a _data folder's resources/; for a page, resources/ in its datapath, relative to the page (./: beside it; none: _data/ beside it, FrameTrail's default). A datapath that is a URL puts them on a server.
+ */
+export function resourcesDir(state) {
+    if (state.kind === 'folder') { return path.join(state.root, 'resources'); }
+    if (state.datapath && isURL(state.datapath)) { return null; }
+    return path.resolve(path.dirname(state.root), state.datapath || '_data/', 'resources');
+}
+
+/**
+ * The local media file whose length lint needs, or null: the video of a hypervideo's first clip, when the clip says neither its out point nor its duration and the video is a file in the root's resources (resourcesDir), not a URL.
  */
 function mediaFileOf(state, bundle, id) {
     const hypervideo = bundle.hypervideos[id].hypervideo || {},
@@ -502,9 +511,24 @@ function mediaFileOf(state, bundle, id) {
         src = resource && resource.src;
     }
     if (typeof src !== 'string' || !src || isURL(src)) { return null; }
-    if (state.kind === 'folder') { return path.join(state.root, 'resources', src); }
-    if (state.datapath && isURL(state.datapath)) { return null; }
-    return path.resolve(path.dirname(state.root), state.datapath || '_data/', 'resources', src);
+    const dir = resourcesDir(state);
+    return dir ? path.join(dir, src) : null;
+}
+
+/**
+ * What ffprobe, if it is installed, tells of a media file: { duration, width, height } (seconds; the pixels of its first video stream, undefined without one), or null when it tells nothing.
+ */
+export function probeMedia(file) {
+    let info;
+    try {
+        info = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,width,height', '-of', 'json', file], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }));
+    } catch (e) {
+        return null;
+    }
+    const duration = parseFloat(info && info.format && info.format.duration),
+          video    = ((info && info.streams) || []).find((stream) => stream.codec_type === 'video' && stream.width > 0);
+    if (!(duration > 0) && !video) { return null; }
+    return { duration: (duration > 0) ? duration : undefined, width: video ? video.width : undefined, height: video ? video.height : undefined };
 }
 
 /**
@@ -516,11 +540,8 @@ function mediaDurations(cache) {
         const stat = fs.statSync(file),
               key  = file + '|' + stat.mtimeMs + '|' + stat.size;
         if (cache && key in cache) { return (cache[key] === null) ? undefined : cache[key]; }
-        let seconds = null;
-        try {
-            const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] });
-            seconds = (parseFloat(out) > 0) ? parseFloat(out) : null;
-        } catch (e) {}
+        const probed  = probeMedia(file),
+              seconds = (probed && probed.duration > 0) ? probed.duration : null;
         if (cache) { cache[key] = seconds; }
         return (seconds === null) ? undefined : seconds;
     };

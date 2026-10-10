@@ -1,0 +1,18 @@
+{
+    "setup": "lecture-folder+video",
+    "root": "_data",
+    "hypervideo": {
+        "name": "^field recording$"
+    },
+    "checks": [
+        {
+            "hypervideo": {
+                "name": "^field recording$",
+                "video": "field-recording.mp4"
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

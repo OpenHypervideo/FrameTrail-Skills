@@ -1,0 +1,38 @@
+{
+    "schema_version": "1.0",
+    "name": "moving-overlay",
+    "description": "A hotspot whose box moves: keyframes.",
+    "tags": [
+        "items"
+    ],
+    "plugins": [
+        "../../plugin"
+    ],
+    "context": {
+        "scaffold_script": "scaffold.sh"
+    },
+    "execution": {
+        "prompt": "Add a yellow circle hotspot to the lecture at 1:00 for 5 seconds that moves from the top left to the bottom right of the video.",
+        "max_turns": 30,
+        "timeout_seconds": 600,
+        "allowed_tools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "Edit",
+            "Write",
+            "Bash",
+            "Skill"
+        ]
+    },
+    "runs": 2,
+    "graders": [
+        {
+            "type": "tool_used",
+            "name": "skill-fired",
+            "tool": "Skill",
+            "input_match": "frametrail-hypervideo",
+            "arm": "with-only"
+        }
+    ]
+}

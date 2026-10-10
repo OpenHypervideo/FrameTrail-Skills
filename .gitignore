@@ -3,3 +3,5 @@ plans/
 node_modules/
 # FrameTrail, as the drift workflow checks it out
 /frametrail/
+evals/results/
+evals/.cache/

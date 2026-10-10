@@ -1,0 +1,40 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "item": {
+                "kind": "overlays",
+                "type": "hotspot",
+                "start": [
+                    59.5,
+                    60.5
+                ],
+                "end": [
+                    64.5,
+                    65.5
+                ],
+                "attributes": {
+                    "shape": {
+                        "matches": "^(circle|undefined)$"
+                    },
+                    "color": {
+                        "hue": [
+                            40,
+                            70
+                        ]
+                    }
+                },
+                "keyframes": {
+                    "min": 2,
+                    "right": true,
+                    "down": true
+                }
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

@@ -1,0 +1,34 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "subtitles": {
+                "lang": "de",
+                "cues": [
+                    {
+                        "start": 1,
+                        "end": 6,
+                        "text": "willkommen zur dritten vorlesung"
+                    },
+                    {
+                        "start": 6,
+                        "end": 12.5,
+                        "text": "membranen und transport"
+                    }
+                ]
+            }
+        },
+        {
+            "layout": {
+                "area": "bottom",
+                "includes": "Transcript",
+                "after": "TimedContent"
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

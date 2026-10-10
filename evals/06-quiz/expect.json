@@ -1,0 +1,37 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "item": {
+                "kind": "overlays",
+                "type": "quiz",
+                "start": [
+                    249.5,
+                    250.5
+                ],
+                "end": [
+                    269.5,
+                    270.5
+                ],
+                "text": "osmosis",
+                "attributes": {
+                    "questionType": {
+                        "matches": "^(multipleChoice|undefined)$"
+                    },
+                    "answers.0.text": {
+                        "matches": "^yes"
+                    },
+                    "answers.1.text": {
+                        "matches": "^no"
+                    },
+                    "answers.1.correct": "true"
+                }
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

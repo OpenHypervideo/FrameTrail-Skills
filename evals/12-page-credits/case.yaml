@@ -1,0 +1,38 @@
+{
+    "schema_version": "1.0",
+    "name": "page-credits",
+    "description": "HTML in a project file's data block: a content view with markup, every < written as FrameTrail writes it.",
+    "tags": [
+        "page"
+    ],
+    "plugins": [
+        "../../plugin"
+    ],
+    "context": {
+        "scaffold_script": "scaffold.sh"
+    },
+    "execution": {
+        "prompt": "In course.html, add a \"Credits\" tab in the area right of the video with this content: <p>Made for <em>Biology 101</em>.</p>",
+        "max_turns": 30,
+        "timeout_seconds": 600,
+        "allowed_tools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "Edit",
+            "Write",
+            "Bash",
+            "Skill"
+        ]
+    },
+    "runs": 2,
+    "graders": [
+        {
+            "type": "tool_used",
+            "name": "skill-fired",
+            "tool": "Skill",
+            "input_match": "frametrail-hypervideo",
+            "arm": "with-only"
+        }
+    ]
+}

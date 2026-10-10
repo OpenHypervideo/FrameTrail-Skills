@@ -1,0 +1,44 @@
+{
+    "setup": "lecture-folder",
+    "root": "_data",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "chapter": {
+                "from": 0,
+                "to": 0,
+                "title": "introduction"
+            }
+        },
+        {
+            "chapter": {
+                "from": 120,
+                "to": 120,
+                "title": "membranes"
+            }
+        },
+        {
+            "chapter": {
+                "from": 185,
+                "to": 195,
+                "title": "diffus"
+            }
+        },
+        {
+            "chapter": {
+                "from": 235,
+                "to": 245,
+                "title": "osmos"
+            }
+        },
+        {
+            "chapters": {
+                "min": 5,
+                "max": 6
+            }
+        },
+        {
+            "valid": true
+        }
+    ]
+}

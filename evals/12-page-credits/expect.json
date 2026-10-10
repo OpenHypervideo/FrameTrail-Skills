@@ -1,0 +1,20 @@
+{
+    "setup": "lecture-page",
+    "root": "course.html",
+    "hypervideo": "1",
+    "checks": [
+        {
+            "layout": {
+                "area": "right",
+                "includes": "CustomHTML",
+                "html": "<em>biology 101</em>"
+            }
+        },
+        {
+            "valid": true
+        },
+        {
+            "escaped": true
+        }
+    ]
+}

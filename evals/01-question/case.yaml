@@ -1,0 +1,39 @@
+{
+    "schema_version": "1.0",
+    "name": "question",
+    "description": "A question about the data: answered, nothing changed.",
+    "tags": [
+        "core",
+        "talk"
+    ],
+    "plugins": [
+        "../../plugin"
+    ],
+    "context": {
+        "scaffold_script": "scaffold.sh"
+    },
+    "execution": {
+        "prompt": "How many chapters does the lecture hypervideo have, and what are they called?",
+        "max_turns": 30,
+        "timeout_seconds": 600,
+        "allowed_tools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "Edit",
+            "Write",
+            "Bash",
+            "Skill"
+        ]
+    },
+    "runs": 2,
+    "graders": [
+        {
+            "type": "tool_used",
+            "name": "skill-fired",
+            "tool": "Skill",
+            "input_match": "frametrail-hypervideo",
+            "arm": "with-only"
+        }
+    ]
+}

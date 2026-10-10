@@ -53,6 +53,6 @@ A page whose block is `data-frametrail="hypervideo"` (an export) holds one hyper
   - Never type `</script` inside the block. It ends the block at once, before the check can help, and the page no longer holds valid data. Write `<\/script` (JSON reads `\/` as `/`).
   - After changing the page with a script, `node ${CLAUDE_PLUGIN_ROOT}/scripts/check.mjs --escape <page>` rewrites the `<` as FrameTrail does; then run the check.
 - Leave the rest of the page alone: the start tag's attributes, the library, other scripts. `data-frametrail-config` and `data-frametrail-language` on the start tag are the page's playback settings; FrameTrail moves them into `config` when it saves.
-- Media are never in the page. Clips and items refer to them by URL, or by a path relative to the start tag's `data-frametrail-datapath` plus `resources/` (with `./`, a `resources/` folder beside the page).
+- Media are never in the page. Clips and items refer to them by URL, or by a path relative to the start tag's `data-frametrail-datapath` plus `resources/` (with `./`, a `resources/` folder beside the page). `node ${CLAUDE_PLUGIN_ROOT}/scripts/add-media.mjs <page> <file> --user "<name>"` copies a file there and registers it in the block's `resources`; read the page again afterwards, before your next Edit of it.
 
 The checks give a page's problems as JSON Pointers into the bundle (`/hypervideos/1/hypervideo/chapters/0/start`) or as a line and column of the page.

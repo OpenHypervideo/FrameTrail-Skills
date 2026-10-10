@@ -8,6 +8,7 @@
  * - The plugin: the marketplace and plugin manifests, what plugin/ holds, each skill's frontmatter, the hooks.
  * - The scripts: check.mjs by hand and as the hooks (run as Claude Code runs them, on copies of the vendored fixtures), user-id.mjs.
  * - The text written here for the model, tested against the vendored truth: JSON examples tagged with a schema validate, type names exist, the files it names exist (see CLAUDE.md, "Text").
+ * - The evaluation (evals/, dev/eval.mjs) without running a model: the case folders, the workspaces, every check on scripted changes, the grading of kept runs.
  */
 
 import { describe, test } from 'node:test';
@@ -18,8 +19,11 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { VENDORED, LOCK, sha256, filesBelow, presentFiles, rewriteLinks } from '../dev/sync.mjs';
+import { VENDORED, LOCK, sha256, filesBelow, presentFiles, rewriteLinks, packageJSON, releaseOf } from '../dev/sync.mjs';
 import * as Check from '../plugin/scripts/check.mjs';
+import { SETUPS, build as buildSetup } from '../evals/lib/setups.mjs';
+import { CHECKS, grade, readData } from '../evals/lib/checks.mjs';
+import { finalMessage, keptRun, gradeResults, table } from '../dev/eval.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -64,8 +68,12 @@ describe('vendored FrameTrail', () => {
         assert.deepEqual({ missing, extra, changed }, { missing: [], extra: [], changed: [] });
     });
 
-    test('the scripts load under require(), as CommonJS whatever surrounds them', () => {
-        assert.deepEqual(readJSON(path.join(ROOT, VENDORED.scripts, 'package.json')), { type: 'commonjs' });
+    test('the scripts load under require(), as CommonJS whatever surrounds them; package.json names the release they are based on', () => {
+        // The release is the latest tag at the vendored commit: v1.4.1-5-g64ebec8 → 1.4.1.
+        const release = releaseOf(lock.frametrail.version.replace(/-dirty$/, '').replace(/-\d+-g[0-9a-f]+$/, ''));
+        assert.deepEqual(readJSON(path.join(ROOT, VENDORED.scripts, 'package.json')), release ? { type: 'commonjs', frametrailRelease: release } : { type: 'commonjs' });
+        assert.deepEqual([releaseOf('v1.4.1'), releaseOf('2.0.0-beta.1'), releaseOf('nightly'), releaseOf('')], ['1.4.1', '2.0.0-beta.1', null, null]);
+        assert.deepEqual(JSON.parse(packageJSON(null)), { type: 'commonjs' });
         assert.equal(typeof Serializer.readBundle, 'function');
         assert.equal(typeof Lint.run, 'function');
         assert.equal(typeof HTMLFormat.readProject, 'function');
@@ -319,8 +327,19 @@ describe('text written for the model', () => {
 /*  The scripts                                                           */
 /* ---------------------------------------------------------------------- */
 
-const CHECK   = path.join(PLUGIN, 'scripts', 'check.mjs');
-const USER_ID = path.join(PLUGIN, 'scripts', 'user-id.mjs');
+const CHECK     = path.join(PLUGIN, 'scripts', 'check.mjs');
+const USER_ID   = path.join(PLUGIN, 'scripts', 'user-id.mjs');
+const CREATE    = path.join(PLUGIN, 'scripts', 'create-project.mjs');
+const ADD_MEDIA = path.join(PLUGIN, 'scripts', 'add-media.mjs');
+
+// Whether FFmpeg's tools are installed (the helpers use them when they are; CI may not have them).
+const HAS_FFMPEG = ['ffmpeg', 'ffprobe'].every((tool) => spawnSync(tool, ['-version'], { stdio: 'ignore' }).status === 0);
+
+// A script run as Claude runs it through Bash: { code, stdout, stderr }.
+function script(file, args, env) {
+    const r = spawnSync(process.execPath, [file, ...args], { env: env || process.env, encoding: 'utf8' });
+    return { code: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim() };
+}
 
 // A JSON file's text changed by fn, written as FrameTrail writes it.
 const editJSON = (fn) => (text) => { const value = JSON.parse(text); fn(value); return JSON.stringify(value, null, 4) + '\n'; };
@@ -363,6 +382,16 @@ function scratch() {
             return { pre, post: self.hook('post', input, session) };
         },
         stop(session = 's') { return self.hook('stop', { stop_hook_active: false }, session); },
+        // The environment of a machine without ffprobe and ffmpeg: an empty PATH (the scripts run with Node's full path).
+        noTools: Object.assign({}, process.env, { PATH: path.join(dir, 'no-tools') }),
+        // A small video: two seconds of FFmpeg's test pattern, 160 × 120, when ffmpeg is there, else bytes with the name of one.
+        video(name = 'clip.mp4') {
+            const target = path.join(dir, name);
+            if (!HAS_FFMPEG || spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=160x120:rate=10', '-pix_fmt', 'yuv420p', target]).status !== 0) {
+                fs.writeFileSync(target, 'not really a video');
+            }
+            return target;
+        },
         remove() { fs.rmSync(dir, { recursive: true, force: true }); }
     };
 
@@ -561,6 +590,220 @@ describe('the scripts', () => {
         assert.equal(spawnSync(process.execPath, [USER_ID], { encoding: 'utf8' }).status, 2);
     });
 
+    test('create-project.mjs: a _data folder and a project file as FrameTrail makes them, without problems; nothing overwritten', withScratch((s) => {
+        const folder = path.join(s.dir, 'cells', '_data');
+        let run = script(CREATE, ['--folder', folder, '--title', 'Cell Biology', '--language', 'de']);
+        assert.equal(run.code, 0, run.stderr);
+        assert.match(run.stdout, /^Created the _data folder .*\nFrameTrail check: no problems\.\nFrameTrail opens it in Chrome or Edge/);
+        const files = readFolder(folder), expected = HTMLFormat.emptyProject();
+        expected['config.json'] = { overviewTitle: 'Cell Biology', defaultLanguage: 'de' };
+        assert.deepEqual(files, expected);
+        assert.deepEqual(validator.validate('project-bundle.schema.json', Serializer.readBundle(files, 'folder')), []);
+        const check = spawnSync(process.execPath, [CHECK, folder], { encoding: 'utf8' });
+        assert.deepEqual([check.status, check.stdout.trim().split('\n').pop()], [0, 'No problems found.']);
+
+        const page    = path.join(s.dir, 'trip.html'),
+              release = readJSON(path.join(ROOT, VENDORED.scripts, 'package.json')).frametrailRelease,
+              cdn     = HTMLFormat.cdnLibrary(release);
+        run = script(CREATE, ['--file', page]);
+        assert.equal(run.code, 0, run.stderr);
+        let html = fs.readFileSync(page, 'utf8');
+        assert.deepEqual(HTMLFormat.parse(html).map((block) => [block.kind, block.datapath]), [['project', './']]);
+        assert.ok(html.includes('<link rel="stylesheet" href="' + cdn.cssURL + '">') && html.includes('<script src="' + cdn.jsURL + '"></script>'), 'FrameTrail from jsDelivr');
+        if (release) { assert.ok(cdn.jsURL.includes('@' + release + '/'), 'pinned to ' + release); }
+        assert.match(html, /<html>\n[\s\S]*<title>trip<\/title>/, 'titled by its file name');
+        assert.deepEqual(HTMLFormat.readProject(html).files, HTMLFormat.emptyProject());
+        assert.deepEqual(Check.problemsOf(Check.readState(page, 'file')), []);
+
+        const named = path.join(s.dir, 'pages', 'named.html');
+        run = script(CREATE, ['--file=' + named, '--title=Voyage', '--language=fr']);
+        assert.equal(run.code, 0, run.stderr);
+        html = fs.readFileSync(named, 'utf8');
+        assert.match(html, /<html lang="fr">\n[\s\S]*<title>Voyage<\/title>/);
+        assert.deepEqual(HTMLFormat.readProject(html).files['config.json'], { overviewTitle: 'Voyage', defaultLanguage: 'fr' });
+
+        const empty = path.join(s.dir, 'empty.html');
+        fs.writeFileSync(empty, '');
+        assert.equal(script(CREATE, ['--file', empty]).code, 0, 'an empty file becomes the page, as in FrameTrail');
+
+        const pageBefore = fs.readFileSync(page, 'utf8');
+        for (const [args, message] of [
+            [['--folder', folder], /is not empty; nothing was written/],
+            [['--file', page], /exists; nothing was written/],
+            [['--file', path.join(s.dir, 'x.html'), '--language', 'es'], /--language is the language of FrameTrail's interface, one of en, de, fr/],
+            [['--file', path.join(s.dir, 'notes.txt')], /A project file is an HTML page/],
+            [['--folder', folder, '--file', page], /Give either --folder or --file/],
+            [[], /Give either --folder or --file/],
+            [['--folder', folder, '--colour', 'red'], /Unknown option '--colour'/]
+        ]) {
+            run = script(CREATE, args);
+            assert.equal(run.code, 2, args.join(' '));
+            assert.match(run.stderr, message, args.join(' '));
+        }
+        assert.deepEqual(readFolder(folder), expected, 'the folder as it was');
+        assert.equal(fs.readFileSync(page, 'utf8'), pageBefore, 'the page as it was');
+        assert.ok(!fs.existsSync(path.join(s.dir, 'x.html')) && !fs.existsSync(path.join(s.dir, 'notes.txt')));
+    }));
+
+    test('add-media.mjs in a _data folder: the file named as FrameTrail names uploads, the entry under the next id, the clip and an item\'s body printed', withScratch((s) => {
+        const data   = s.folder('all-types'),
+              clip   = s.video(),
+              file   = path.join(data, 'resources', '_index.json'),
+              before = readJSON(file),
+              next   = String(Math.max(before['resources-increment'] || 0, ...Object.keys(before.resources).map(Number)) + 1),
+              user   = Serializer.guestUserID('Ada');
+
+        const run = script(ADD_MEDIA, [data, clip, '--user', 'Ada', '--name', 'Cell division', '--license', 'cc-by-sa', '--attribution', 'Ada L.'], s.noTools);
+        assert.equal(run.code, 0, run.stderr);
+        const index = readJSON(file), entry = index.resources[next];
+        assert.equal(index['resources-increment'], Number(next));
+        assert.match(entry.src, new RegExp('^' + user + '_\\d{13}_Cell_division\\.mp4$'));
+        assert.deepEqual(entry, { name: 'Cell division', type: 'video', src: entry.src, creator: 'Ada', creatorId: user, created: entry.created, licenseType: 'CC-BY-SA', licenseAttribution: 'Ada L.', attributes: {} }, 'no thumbnail without ffmpeg');
+        assert.ok(Number.isInteger(entry.created) && Math.abs(entry.created - Date.now() / 1000) < 60, 'created in seconds');
+        assert.deepEqual(fs.readFileSync(path.join(data, 'resources', entry.src)), fs.readFileSync(clip));
+        assert.deepEqual(validator.validate('resources-index.schema.json', index), []);
+        for (const id of Object.keys(before.resources)) { assert.deepEqual(index.resources[id], before.resources[id], 'resource ' + id + ' as it was'); }
+
+        assert.ok(run.stdout.includes(JSON.stringify({ resourceId: next, src: entry.src, duration: 0, in: 0, out: 0 })), 'the clip');
+        assert.ok(!run.stdout.includes('ffprobe:'));
+        const body = JSON.parse(/As the body of an overlay or an annotation that shows it:\n(\{[\s\S]*?\n\})/.exec(run.stdout)[1]),
+              item = readJSON(path.join(data, 'hypervideos', '1', 'hypervideo.json')).contents.find((c) => c['frametrail:type'] === 'Overlay');
+        assert.deepEqual([body['frametrail:type'], body.source, body['frametrail:resourceId'], body['frametrail:licenseType']], ['video', entry.src, next, 'CC-BY-SA']);
+        assert.deepEqual(validator.validate('content-item.schema.json', Object.assign({}, item, { body })), [], 'the body makes a valid overlay');
+        assert.match(run.stdout, /\nFrameTrail check: no new problems\.$/);
+
+        // A file already in resources/ is registered as it is, once.
+        fs.copyFileSync(clip, path.join(data, 'resources', 'own.mp4'));
+        let again = script(ADD_MEDIA, [path.join(data, 'hypervideos'), path.join(data, 'resources', 'own.mp4'), '--user', 'Ada'], s.noTools);
+        assert.equal(again.code, 0, again.stderr);
+        assert.match(again.stdout, /\nRegistered the file as it is: /);
+        assert.deepEqual([readJSON(file).resources[String(Number(next) + 1)].src, readJSON(file).resources[String(Number(next) + 1)].name], ['own.mp4', 'own']);
+        again = script(ADD_MEDIA, [data, path.join(data, 'resources', 'own.mp4'), '--user', 'Ada'], s.noTools);
+        assert.match(again.stdout, new RegExp('^Already in the library as resource ' + (Number(next) + 1) + ', nothing added'));
+        assert.deepEqual(fs.readdirSync(path.join(data, 'resources')).sort(), ['_index.json', entry.src, 'own.mp4'].sort());
+
+        // A folder as FrameTrail scaffolds it: no increment yet.
+        const bare = path.join(s.dir, 'bare');
+        script(CREATE, ['--folder', bare]);
+        fs.writeFileSync(path.join(bare, 'resources', '_index.json'), JSON.stringify({ resources: [] }));
+        assert.equal(script(ADD_MEDIA, [bare, clip, '--user', 'Ada'], s.noTools).code, 0);
+        assert.deepEqual(Object.keys(readJSON(path.join(bare, 'resources', '_index.json')).resources), ['1']);
+    }));
+
+    test('add-media.mjs in a project file: the file beside the page, the entry in the data block, the rest as it was; URLs as FrameTrail adds them', withScratch((s) => {
+        const page   = s.page('all-types'),
+              clip   = s.video(),
+              html   = fs.readFileSync(page, 'utf8'),
+              before = HTMLFormat.parse(html)[0].bundle,
+              next   = String(Math.max(before.resources['resources-increment'] || 0, ...Object.keys(before.resources.resources).map(Number)) + 1);
+
+        let run = script(ADD_MEDIA, [page, clip, '--user', 'Ada'], s.noTools);
+        assert.equal(run.code, 0, run.stderr);
+        let after  = fs.readFileSync(page, 'utf8'),
+            bundle = HTMLFormat.parse(after)[0].bundle;
+        const entry = bundle.resources.resources[next];
+        assert.equal(entry.name, 'clip');
+        assert.ok(fs.existsSync(path.join(s.dir, 'resources', entry.src)), 'in resources/ beside the page');
+        assert.equal(after.replace(HTMLFormat.firstBlockText(after), ''), html.replace(HTMLFormat.firstBlockText(html), ''), 'the rest of the page as it was');
+        assert.deepEqual(Object.assign({}, bundle, { resources: null }), Object.assign({}, before, { resources: null }), 'only the resources changed');
+        assert.equal(HTMLFormat.firstBlockText(after).indexOf('<'), -1);
+        assert.match(run.stdout, /\nIt has no licence type: lint warns/);
+        assert.match(run.stdout, /\nThe page has changed: read it again before your next Edit of it\.\nFrameTrail check: no new problems\.$/);
+
+        run = script(ADD_MEDIA, [page, 'https://www.youtube.com/watch?feature=share&v=abcdEFGh123&t=30', '--user', 'Ada', '--name', 'Talk']);
+        assert.equal(run.code, 0, run.stderr);
+        bundle = HTMLFormat.parse(fs.readFileSync(page, 'utf8'))[0].bundle;
+        const talk = bundle.resources.resources[String(Number(next) + 1)];
+        assert.deepEqual([talk.type, talk.src, talk.thumb], ['youtube', 'https://www.youtube.com/embed/abcdEFGh123?start=30', 'https://img.youtube.com/vi/abcdEFGh123/hqdefault.jpg']);
+        assert.ok(run.stdout.includes('"src":"https://www.youtube.com/embed/abcdEFGh123?start=30","duration":0'), 'a YouTube video can be the clip');
+        run = script(ADD_MEDIA, [page, 'https://youtu.be/abcdEFGh123?t=30', '--user', 'Ada', '--name', 'Again']);
+        assert.match(run.stdout, new RegExp('^Already in the library as resource ' + (Number(next) + 1)));
+        for (const [url, type, src] of [
+            ['https://vimeo.com/123456789', 'vimeo', 'https://player.vimeo.com/video/123456789'],
+            ['https://example.org/media/lecture.m3u8', 'video', 'https://example.org/media/lecture.m3u8'],
+            ['https://example.org/media/Handout.PDF', 'pdf', 'https://example.org/media/Handout.PDF'],
+            ['https://example.org/img/cell.png?w=800', 'image', 'https://example.org/img/cell.png?w=800']
+        ]) {
+            run = script(ADD_MEDIA, [page, url, '--user', 'Ada', '--name', 'A ' + type]);
+            assert.equal(run.code, 0, url + ': ' + run.stderr);
+            const added = Object.values(HTMLFormat.parse(fs.readFileSync(page, 'utf8'))[0].bundle.resources.resources).find((r) => r.name === 'A ' + type);
+            assert.deepEqual([added.type, added.src], [type, src], url);
+        }
+        const unchanged = fs.readFileSync(page, 'utf8');
+        run = script(ADD_MEDIA, [page, 'https://example.org/about', '--user', 'Ada', '--name', 'About']);
+        assert.equal(run.code, 2);
+        assert.match(run.stderr, /^Not a media URL add-media knows: https:\/\/example\.org\/about\n.*goes straight into an item's body/);
+        assert.equal(fs.readFileSync(page, 'utf8'), unchanged);
+
+        // A page whose media are on a server: no files, URLs yes.
+        const remote = path.join(s.dir, 'remote.html'), fixture = readFolder(path.join(ROOT, VENDORED.fixtures, 'all-types'));
+        fs.writeFileSync(remote, HTMLFormat.writeProject(fixture, null, { library: { css: '', js: '' }, datapath: 'https://example.org/_data/' }));
+        run = script(ADD_MEDIA, [remote, clip, '--user', 'Ada']);
+        assert.equal(run.code, 2);
+        assert.match(run.stderr, /are on a server \(its datapath is https:\/\/example\.org\/_data\/\)/);
+        assert.equal(script(ADD_MEDIA, [remote, 'https://example.org/media/a.mp4', '--user', 'Ada', '--name', 'A'], s.noTools).code, 0);
+
+        // A page with a hypervideo bundle (an export): its resources are a plain map.
+        const single = path.join(s.dir, 'single.html'),
+              export1 = Serializer.readBundle(fixture, 'folder', { bundle: 'hypervideo', id: '1' });
+        fs.writeFileSync(single, HTMLFormat.write(export1, { library: { css: '', js: '' }, datapath: './' }));
+        run = script(ADD_MEDIA, [single, clip, '--user', 'Ada'], s.noTools);
+        assert.equal(run.code, 0, run.stderr);
+        const resources = HTMLFormat.parse(fs.readFileSync(single, 'utf8'))[0].bundle.resources,
+              id        = String(Math.max(0, ...Object.keys(export1.resources || {}).map(Number)) + 1);
+        assert.equal(resources[id].name, 'clip');
+        assert.deepEqual(validator.validate('hypervideo-bundle.schema.json', HTMLFormat.parse(fs.readFileSync(single, 'utf8'))[0].bundle), []);
+    }));
+
+    test('add-media.mjs refuses what it cannot add, and then writes nothing', withScratch((s) => {
+        const data   = s.folder('all-types'),
+              clip   = s.video(),
+              notes  = path.join(s.dir, 'notes.txt'),
+              before = readFolder(data);
+        fs.writeFileSync(notes, 'notes');
+        for (const [args, message] of [
+            [[data, clip], /^--user is missing/],
+            [[data, clip, '--user', ' '], /^--user is missing/],
+            [[data, path.join(s.dir, 'none.mp4'), '--user', 'Ada'], /^No such file/],
+            [[data, notes, '--user', 'Ada'], /^Not a media file add-media takes: notes\.txt\nIt takes image \(jpg/],
+            [[data, clip, '--user', 'Ada', '--license', 'MIT'], /^--license is one of Copyright, CC-BY, /],
+            [[data, clip, '--user', 'Ada', '--user-id', '../x'], /cannot be part of a file name/],
+            [[s.dir, clip, '--user', 'Ada'], /^Not FrameTrail data/],
+            [[data, 'https://example.org/x.mp4', '--user', 'Ada'], /^--name is missing/],
+            [[data], /^Usage: node add-media\.mjs/]
+        ]) {
+            const run = script(ADD_MEDIA, args, s.noTools);
+            assert.equal(run.code, 2, args.join(' '));
+            assert.match(run.stderr, message, args.join(' '));
+        }
+        fs.mkdirSync(path.join(data, '.collab'));
+        const server = script(ADD_MEDIA, [data, clip, '--user', 'Ada'], s.noTools);
+        assert.equal(server.code, 2);
+        assert.match(server.stderr, /is the data folder of a FrameTrail server \(it has a \.collab folder\)/);
+        assert.deepEqual(readFolder(data), before);
+        assert.deepEqual(fs.readdirSync(path.join(data, 'resources')), ['_index.json']);
+    }));
+
+    test('add-media.mjs with ffprobe and ffmpeg: the media\'s length and size, and a video\'s thumbnail and scrub previews as FrameTrail\'s server makes them', { skip: HAS_FFMPEG ? false : 'ffmpeg and ffprobe are not installed' }, withScratch((s) => {
+        const data = s.folder('all-types'),
+              run  = script(ADD_MEDIA, [data, s.video('lecture.mp4'), '--user', 'Ada']);
+        assert.equal(run.code, 0, run.stderr);
+        const index = readJSON(path.join(data, 'resources', '_index.json')),
+              id    = String(index['resources-increment']),
+              entry = index.resources[id];
+        assert.match(entry.thumb, new RegExp('^' + Serializer.guestUserID('Ada') + '_\\d{13}_thumb_lecture\\.png$'));
+        assert.equal(entry.thumb.split('_thumb_')[0], entry.src.split('_lecture')[0], 'the same stamp');
+        assert.deepEqual(fs.readFileSync(path.join(data, 'resources', entry.thumb)).subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'a PNG');
+        assert.match(run.stdout, /\nffprobe: length 2 s, 160 × 120 pixels\.\nThumbnail: .*\nScrub previews \(the player finds them by name\): /);
+        const sprite = path.join(data, 'resources', entry.src.replace(/\.mp4$/, '_scrub.jpg'));
+        assert.deepEqual(fs.readFileSync(sprite).subarray(0, 3), Buffer.from([0xff, 0xd8, 0xff]), 'a JPEG beside the video');
+        assert.deepEqual([Check.probeMedia(sprite).width, Check.probeMedia(sprite).height], [1600, 900], '5 × 5 tiles of 320 × 180');
+        assert.ok(run.stdout.includes(JSON.stringify({ resourceId: id, src: entry.src, duration: 0, in: 0, out: 0 }) + '\nand in its meta: "thumb": ' + JSON.stringify(entry.thumb)));
+        const probed = Check.probeMedia(path.join(data, 'resources', entry.src));
+        assert.deepEqual([Math.round(probed.duration), probed.width, probed.height], [2, 160, 120]);
+        assert.equal(Check.probeMedia(path.join(data, 'config.json')), null, 'no media');
+    }));
+
     test('hooks.json: check.mjs before and after Write, Edit and MultiEdit, and at the stop', () => {
         const hooks = readJSON(path.join(PLUGIN, 'hooks', 'hooks.json'));
         assert.ok(hooks.description);
@@ -573,6 +816,205 @@ describe('the scripts', () => {
         }
         assert.ok(fs.existsSync(CHECK));
     });
+
+});
+
+
+/* ---------------------------------------------------------------------- */
+/*  The evaluation                                                        */
+/* ---------------------------------------------------------------------- */
+
+const EVALS      = path.join(ROOT, 'evals');
+const CASES      = fs.readdirSync(EVALS).filter((name) => /^\d\d-/.test(name)).sort();
+const EVAL_TAGS  = ['core', 'talk', 'chapters', 'items', 'new', 'page', 'neg'];
+const EVAL_TOOLS = ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash', 'Skill'];
+const SCAFFOLD   = 'node "$(dirname "$0")/../lib/scaffold.mjs" "$(basename "$(dirname "$0")")"\n';
+
+// A workspace with a setup built in it (placeholder media), and the data as it was, for the checks.
+function workspace(s, setup) {
+    const dir = fs.mkdtempSync(path.join(s.dir, 'ws-'));
+    buildSetup(setup, dir, { placeholder: true });
+    return dir;
+}
+const before   = (setup) => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frametrail-before-')); try { buildSetup(setup, dir, { placeholder: true }); return readData(dir, SETUPS[setup].root); } finally { fs.rmSync(dir, { recursive: true, force: true }); } };
+const changeJSON = (file, fn) => fs.writeFileSync(file, editJSON(fn)(fs.readFileSync(file, 'utf8')));
+// The verdicts of a grading, by check name: { name: [passed, reason] }.
+const verdicts = (graded) => Object.fromEntries(graded.results.map((r) => [r.check.split(' ')[0] + (r.check.includes('"title"') ? ':' + JSON.parse(r.check.slice(r.check.indexOf(' ') + 1)).title : ''), [r.passed, r.reason]]));
+
+describe('the evaluation', () => {
+
+    test('FrameTrail\'s data sets the workspaces are made from are valid bundles', () => {
+        for (const name of fs.readdirSync(path.join(ROOT, VENDORED.bundles))) {
+            const bundle = readJSON(path.join(ROOT, VENDORED.bundles, name)),
+                  errors = validator.validate(bundle.bundle + '-bundle.schema.json', bundle);
+            assert.ok(!errors.length, name + ':\n' + errorList(errors));
+        }
+    });
+
+    test('every case folder: case.yaml (as JSON), the scaffold line, expect.json with a known setup and known checks', () => {
+        assert.equal(CASES.length, 13);
+        const names = new Set();
+        for (const folder of CASES) {
+            assert.deepEqual(fs.readdirSync(path.join(EVALS, folder)).sort(), ['case.yaml', 'expect.json', 'scaffold.sh'], folder);
+            const c = readJSON(path.join(EVALS, folder, 'case.yaml')), expect = readJSON(path.join(EVALS, folder, 'expect.json'));
+            assert.equal(c.schema_version, '1.0', folder);
+            assert.equal(c.name, folder.replace(/^\d\d-/, ''), folder);
+            assert.ok(!names.has(c.name), 'unique ' + c.name); names.add(c.name);
+            assert.ok(c.description && c.tags.length && c.tags.every((t) => EVAL_TAGS.includes(t)), folder + ': tags ' + c.tags);
+            assert.deepEqual(c.plugins, ['../../plugin'], folder);
+            assert.deepEqual(c.context, { scaffold_script: 'scaffold.sh' }, folder);
+            assert.deepEqual(c.execution.allowed_tools, EVAL_TOOLS, folder);
+            assert.ok(c.execution.prompt.trim() && !/(^|\s)(\/|~\/)\S/.test(c.execution.prompt), folder + ': a prompt without absolute paths');
+            assert.equal(c.runs, 2, folder);
+            const skill = c.graders.find((g) => g.tool === 'Skill' && g.input_match === 'frametrail-hypervideo');
+            assert.ok(skill, folder + ': the Skill indicator');
+            assert.deepEqual([skill.arm, skill.max], c.tags.includes('neg') ? ['both', 0] : ['with-only', undefined], folder);
+            assert.equal(fs.readFileSync(path.join(EVALS, folder, 'scaffold.sh'), 'utf8'), SCAFFOLD, folder);
+            assert.ok(SETUPS[expect.setup], folder + ': setup ' + expect.setup);
+            assert.ok(expect.root === undefined || typeof expect.root === 'string', folder);
+            assert.deepEqual(expect.checks.map((check) => Object.keys(check)).filter((keys) => keys.length !== 1 || !CHECKS.includes(keys[0])), [], folder);
+            assert.ok(!expect.root || expect.checks.some((check) => 'valid' in check || 'noChanges' in check), folder + ': data cases check valid or noChanges');
+            assert.equal(expect.checks.some((check) => 'escaped' in check), /\.html$/.test(expect.root || ''), folder + ': pages, and only pages, check escaped');
+        }
+        for (const tag of EVAL_TAGS) { assert.ok(CASES.some((folder) => readJSON(path.join(EVALS, folder, 'case.yaml')).tags.includes(tag)), 'tag ' + tag + ' used'); }
+    });
+
+    test('the workspaces: the data as FrameTrail has it, without problems; a page loads the pinned library', withScratch((s) => {
+        for (const name of Object.keys(SETUPS).filter((name) => SETUPS[name].root)) {
+            const dir = workspace(s, name), root = path.join(dir, SETUPS[name].root);
+            const problems = Check.problemsOf(Check.readState(root, root.endsWith('.html') ? 'file' : 'folder'));
+            assert.deepEqual(problems, [], name + ':\n' + Check.formatProblems(problems));
+        }
+        const page = fs.readFileSync(path.join(workspace(s, 'lecture-page'), 'course.html'), 'utf8');
+        assert.ok(page.includes(HTMLFormat.cdnLibrary(readJSON(path.join(ROOT, VENDORED.scripts, 'package.json')).frametrailRelease).jsURL));
+        assert.ok(fs.existsSync(path.join(workspace(s, 'lecture-folder+video'), 'field-recording.mp4')));
+        const run = spawnSync(process.execPath, [path.join(EVALS, 'lib', 'scaffold.mjs'), 'nothing-here'], { encoding: 'utf8' });
+        assert.equal(run.status, 2);
+    }));
+
+    test('the checks, untouched and after scripted changes: chapters, items, annotations, layout, subtitles, noChanges', withScratch((s) => {
+        const was  = before('lecture-folder'),
+              dir  = workspace(s, 'lecture-folder'),
+              file = path.join(dir, '_data', 'hypervideos', '1', 'hypervideo.json'),
+              run  = (checks, message = '') => grade({ root: '_data', hypervideo: '1', checks }, { workspace: dir, message, before: was });
+
+        let v = verdicts(run([{ valid: true }, { noChanges: true }, { chapter: { from: 510, to: 510, title: '^summary$' } }]));
+        assert.deepEqual([v.valid[0], v.noChanges[0], v['chapter:^summary$'][0]], [true, true, false]);
+        assert.match(v['chapter:^summary$'][1], /no chapter in \[510, 510\] titled \/\^summary\$\/; chapters: 0 Introduction \| 120 Membranes \| 300 Transport/);
+
+        changeJSON(file, (h) => {
+            h.chapters.push({ start: 510, title: 'Summary' });
+            h.contents.push(Object.assign(JSON.parse(JSON.stringify(h.contents[0])), { created: '2026-10-10T08:00:00.000Z', target: Object.assign({}, h.contents[0].target, { selector: { type: 'FragmentSelector', conformsTo: 'http://www.w3.org/TR/media-frags/', value: 't=10,20&xywh=percent:5,2,90,15' } }) }));
+            h.contents[h.contents.length - 1].body['frametrail:attributes'] = { text: '&lt;p&gt;Welcome to lecture 3&lt;/p&gt;' };
+            const hotspot = JSON.parse(JSON.stringify(h.contents.find((c) => c.body['frametrail:type'] === 'hotspot')));
+            hotspot.created = '2026-10-10T08:00:01.000Z';
+            hotspot.target.selector = { type: 'FragmentSelector', conformsTo: 'http://www.w3.org/TR/media-frags/', value: 't=60,65&xywh=percent:5,5,90,90', 'frametrail:keyframes': [{ t: 60, xywh: [5, 5, 10, 10] }, { t: 65, xywh: [85, 85, 10, 10] }] };
+            hotspot.body['frametrail:attributes'] = { shape: 'circle', color: '#ffd700' };
+            h.contents.push(hotspot);
+            h.config.layoutArea.areaBottom.push({ type: 'Transcript', name: 'Transcript', transcriptSource: 'en' });
+            h.subtitles.push({ src: 'de.vtt', srclang: 'de' });
+        });
+        fs.writeFileSync(path.join(dir, '_data', 'hypervideos', '1', 'subtitles', 'de.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:06.000\nWillkommen zur dritten Vorlesung über Zellbiologie.\n');
+
+        v = verdicts(run([
+            { valid: true }, { noChanges: true }, { chapter: { from: 510, to: 510, title: '^summary$' } }, { chapters: { min: 4, max: 4 } }, { noChapter: { from: 600, to: 100000 } },
+            { item: { kind: 'overlays', type: 'text', start: [9.5, 10.5], end: [19.5, 20.5], text: 'welcome to lecture 3', box: { top: [0, 30] } } },
+            { item: { kind: 'overlays', type: 'hotspot', start: [59.5, 60.5], attributes: { shape: { matches: '^(circle|undefined)$' }, color: { hue: [40, 70] } }, keyframes: { min: 2, right: true, down: true } } },
+            { layout: { area: 'bottom', includes: 'Transcript', after: 'TimedContent' } },
+            { subtitles: { lang: 'de', cues: [{ start: 1, end: 6, text: 'willkommen' }] } },
+            { answer: 'summary' }
+        ], 'I added the chapter "Summary".'));
+        for (const [name, [passed, reason]] of Object.entries(v)) { assert.equal(passed, name !== 'noChanges', name + ': ' + reason); }
+        assert.match(v.noChanges[1], /^changed: hypervideos\/1\/hypervideo\.json, hypervideos\/1\/subtitles\/de\.vtt$/);
+
+        v = verdicts(run([
+            { item: { kind: 'overlays', type: 'text', start: [11, 12] } }, { item: { kind: 'overlays', type: 'hotspot', start: [59.5, 60.5], attributes: { color: { hue: [200, 260] } } } },
+            { layout: { area: 'bottom', includes: 'TimedContent', after: 'Transcript' } }, { subtitles: { lang: 'de', cues: [{ start: 1, end: 7, text: 'willkommen' }] } },
+            { chapters: { min: 5, max: 6 } }, { answer: 'bonus' }, { noItem: { kind: 'overlays', type: 'text', text: 'welcome' } }
+        ]));
+        assert.ok(Object.values(v).every(([passed]) => !passed), JSON.stringify(v));
+        assert.match(v.item[1], /^no such item; closest: /);
+
+        // An annotation by Ada (any id), in a file with its index entry; valid catches a file without one.
+        const notes = path.join(dir, '_data', 'hypervideos', '1', 'annotations', '1.json');
+        changeJSON(notes, (list) => { list.push(Object.assign(JSON.parse(JSON.stringify(list[0])), { created: '2026-10-10T08:00:02.000Z', target: Object.assign({}, list[0].target, { selector: Object.assign({}, list[0].target.selector, { value: 't=60,90' }) }), body: Object.assign({}, list[0].body, { 'frametrail:attributes': { text: '&lt;p&gt;Remember: diffusion needs no energy.&lt;/p&gt;' } }) })); });
+        v = verdicts(run([{ item: { kind: 'annotations', by: '^ada$', start: [59.5, 60.5], end: [89.5, 90.5], text: 'diffusion needs no energy' } }, { valid: true }]));
+        assert.deepEqual([v.item[0], v.valid[0]], [true, true], JSON.stringify(v));
+        fs.writeFileSync(path.join(dir, '_data', 'hypervideos', '1', 'annotations', 'guest_ada-38390dbb.json'), '[]');
+        assert.match(verdicts(run([{ valid: true }])).valid[1], /^1 error:\n[\s\S]*Has no entry in annotations\/_index\.json/);
+    }));
+
+    test('the checks on pages, new hypervideos and other files: a raw "<", a video in the resources, a JSON value', withScratch((s) => {
+        const dir  = workspace(s, 'lecture-page'),
+              page = path.join(dir, 'course.html'),
+              html = fs.readFileSync(page, 'utf8'),
+              b    = HTMLFormat.parse(html)[0].bundle;
+        b.hypervideos['1'].hypervideo.config.layoutArea.areaRight.push({ type: 'CustomHTML', name: 'Credits', html: '<p>Made for <em>Biology 101</em>.</p>' });
+        fs.writeFileSync(page, html.replace(HTMLFormat.firstBlockText(html), JSON.stringify(b, null, 4)));
+        const checks = [{ layout: { area: 'right', includes: 'CustomHTML', html: '<em>biology 101</em>' } }, { valid: true }, { escaped: true }];
+        let v = verdicts(grade({ root: 'course.html', hypervideo: '1', checks }, { workspace: dir }));
+        assert.deepEqual([v.layout[0], v.valid[0], v.escaped[1]], [true, true, 'the data block holds 6 raw "<"'], JSON.stringify(v)); // the Credits' 4 and the subtitles' <v Ada></v>
+        fs.writeFileSync(page, Check.escapeBlock(fs.readFileSync(page, 'utf8')).html);
+        v = verdicts(grade({ root: 'course.html', hypervideo: '1', checks }, { workspace: dir }));
+        assert.deepEqual([v.layout[0], v.valid[0], v.escaped[0]], [true, true, true], JSON.stringify(v));
+        assert.equal(verdicts(grade({ root: '_data', checks: [{ escaped: true }] }, { workspace: workspace(s, 'lecture-folder') })).escaped[1], 'not a project file');
+
+        // A new hypervideo playing a copy of the given file: through the helpers, as Claude would make it.
+        const folder = workspace(s, 'lecture-folder+video');
+        const added = spawnSync(process.execPath, [path.join(PLUGIN, 'scripts', 'add-media.mjs'), path.join(folder, '_data'), path.join(folder, 'field-recording.mp4'), '--user', 'Ada'], { encoding: 'utf8', env: s.noTools });
+        assert.equal(added.status, 0, added.stderr);
+        const resource = /"resourceId":"(\d+)","src":"([^"]+)"/.exec(added.stdout);
+        changeJSON(path.join(folder, '_data', 'hypervideos', '_index.json'), (index) => { index['hypervideo-increment'] = 2; index.hypervideos['2'] = './2'; });
+        const hv = readJSON(path.join(folder, '_data', 'hypervideos', '1', 'hypervideo.json'));
+        Object.assign(hv, { meta: Object.assign({}, hv.meta, { name: 'Field recording' }), clips: [{ resourceId: resource[1], src: resource[2], duration: 0, in: 0, out: 0 }], contents: [], chapters: [], subtitles: [] });
+        fs.mkdirSync(path.join(folder, '_data', 'hypervideos', '2', 'annotations'), { recursive: true });
+        fs.writeFileSync(path.join(folder, '_data', 'hypervideos', '2', 'hypervideo.json'), JSON.stringify(hv, null, 4));
+        fs.writeFileSync(path.join(folder, '_data', 'hypervideos', '2', 'annotations', '_index.json'), JSON.stringify({ mainAnnotation: null, annotationfiles: {} }));
+        const want = { root: '_data', hypervideo: { name: '^field recording$' }, checks: [{ hypervideo: { name: '^field recording$', video: 'field-recording.mp4' } }, { valid: true }, { chapters: { min: 0, max: 0 } }] };
+        v = verdicts(grade(want, { workspace: folder }));
+        assert.ok(Object.values(v).every(([passed]) => passed), JSON.stringify(v));
+        fs.writeFileSync(path.join(folder, 'field-recording.mp4'), 'another video');
+        assert.match(verdicts(grade(want, { workspace: folder })).hypervideo[1], /is not field-recording\.mp4$/);
+
+        // No data: the cases that make it fail all their data checks with one reason; file and answer still work.
+        const none = workspace(s, 'node-app');
+        v = verdicts(grade({ root: 'trip.html', checks: [{ valid: true }, { file: { path: 'package.json', pointer: '/scripts/start', matches: '^node index' } }] }, { workspace: none }));
+        assert.deepEqual(v, { valid: [false, 'trip.html does not exist'], file: [true, null] });
+    }));
+
+    test('dev/eval.mjs: kept runs graded from their traces, limits counted as not run, the table, the kept folders removed', withScratch((s) => {
+        assert.equal(finalMessage('{"type":"assistant","message":{"content":[{"type":"text","text":"Working."}]}}\n{"type":"result","result":"Added \\"Summary\\" at 8:30."}\n'), 'Added "Summary" at 8:30.');
+        assert.equal(finalMessage('{"type":"assistant","message":{"content":[{"type":"text","text":"Last words."}]}}\nnot json\n'), 'Last words.');
+
+        // Two kept runs as the CLI leaves them (one sealed), and one cut off by a usage limit.
+        const kept = (name, edit, sealed) => {
+            const root = path.join(s.dir, name), home = path.join(root, sealed ? 'sealed' : '', 'home', 'cwd');
+            fs.mkdirSync(home, { recursive: true });
+            buildSetup('lecture-folder', home, { placeholder: true });
+            if (edit) { changeJSON(path.join(home, '_data', 'hypervideos', '1', 'hypervideo.json'), (h) => { h.chapters.push({ start: 510, title: 'Summary' }); }); }
+            fs.mkdirSync(path.join(root, 'out'));
+            fs.writeFileSync(path.join(root, 'out', 'trace.jsonl'), JSON.stringify({ type: 'result', result: edit ? 'Added "Summary" at 8:30; the video ends at 10:00, so there is no "Bonus".' : 'Done.' }) + '\n');
+            if (sealed) { fs.chmodSync(path.join(root, 'sealed'), 0o000); }
+            return path.join(root, 'out', 'trace.jsonl');
+        };
+        const results = path.join(s.dir, 'results');
+        fs.mkdirSync(results);
+        const run = (tracePath, extra) => Object.assign({ score: 1, turns: 5, costUsd: 0.1, durationSeconds: 20, error: null, tracePath, graders: [{ name: 'skill-fired', passed: true, withOnly: true, scored: false }] }, extra);
+        fs.writeFileSync(path.join(results, 'aggregate-result.json'), JSON.stringify({ startedAt: '2026-10-10T08:00:00.000Z', claudeVersion: '2.1.295', suite: { modelOverride: 'opus' }, cases: [{
+            name: 'chapters', dir: path.join(EVALS, '03-chapters'),
+            arms: { with: [run(kept('e-with1', true, true)), run(null, { error: 'exit 1: You\'ve hit your session limit · resets 5:50am (Europe/Berlin)' })], without: [run(kept('e-without1', false, false), { graders: [] })] }
+        }] }));
+        assert.ok(keptRun(path.join(s.dir, 'e-with1', 'out', 'trace.jsonl')).workspace.endsWith(path.join('sealed', 'home', 'cwd')));
+        fs.chmodSync(path.join(s.dir, 'e-with1', 'sealed'), 0o000);
+
+        const summary = gradeResults(results);
+        assert.deepEqual(summary.runs.map((r) => [r.case, r.arm, r.status, r.skill]), [['03-chapters', 'with', 'passed', true], ['03-chapters', 'with', 'notRun', true], ['03-chapters', 'without', 'failed', null]]);
+        assert.deepEqual(readJSON(path.join(results, 'summary.json')).runs.length, 3);
+        assert.ok(!fs.existsSync(path.join(s.dir, 'e-with1')) && !fs.existsSync(path.join(s.dir, 'e-without1')), 'the kept folders are removed');
+        const markdown = table(summary.runs);
+        assert.match(markdown, /\| 03-chapters \| 1\/1 \(\+1 not run\) \| 0\/1 \| \+100 \| 100 % \/ 40 % \| 1\/1 \|/);
+        assert.match(markdown, /- \*\*03-chapters\*\*, without: chapter: no chapter in \[510, 510\]/);
+    }));
 
 });
 

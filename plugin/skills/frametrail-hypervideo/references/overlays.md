@@ -150,6 +150,8 @@ A quiz needs room: half the frame or more. Its question and answers are plain te
 
 An image, a video, a YouTube video, a web page and the other library types show a source. When it is in the library (`resources/_index.json`), copy the resource into the body: its `src` into `body.source` or `body.value` (TYPES.md says which for each type), `name` into `frametrail:name`, `thumb` into `frametrail:thumb`, `licenseType` and `licenseAttribution` into `frametrail:licenseType` and `frametrail:licenseAttribution`, its `attributes`, and its id as `frametrail:resourceId`. The item keeps this copy; it does not look the resource up again. Lint warns when a media overlay has no licence type.
 
+A file the user gives (an image, a video, audio, a PDF) goes into the library first: `node ${CLAUDE_PLUGIN_ROOT}/scripts/add-media.mjs <folder or page> <file> --user "<name>" [--name "<title>"] [--license <type> --attribution "<who>"]` copies and registers it and prints the body for an item made from it, as below; so does a media URL (an image, a YouTube video, …) with `--name`. Use that body as it is.
+
 ```jsonc
 "body": {
     "type": "Image",

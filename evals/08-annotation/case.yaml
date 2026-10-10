@@ -1,0 +1,39 @@
+{
+    "schema_version": "1.0",
+    "name": "annotation",
+    "description": "An annotation by a named user, in their file with its index entry.",
+    "tags": [
+        "core",
+        "items"
+    ],
+    "plugins": [
+        "../../plugin"
+    ],
+    "context": {
+        "scaffold_script": "scaffold.sh"
+    },
+    "execution": {
+        "prompt": "I'm Ada. Add a note to the lecture from 1:00 to 1:30: \"Remember: diffusion needs no energy.\"",
+        "max_turns": 30,
+        "timeout_seconds": 600,
+        "allowed_tools": [
+            "Read",
+            "Glob",
+            "Grep",
+            "Edit",
+            "Write",
+            "Bash",
+            "Skill"
+        ]
+    },
+    "runs": 2,
+    "graders": [
+        {
+            "type": "tool_used",
+            "name": "skill-fired",
+            "tool": "Skill",
+            "input_match": "frametrail-hypervideo",
+            "arm": "with-only"
+        }
+    ]
+}
