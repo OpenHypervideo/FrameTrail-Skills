@@ -6,8 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FrameTrail-Skills is a Claude Code plugin (and the marketplace that lists it) for creating and editing FrameTrail hypervideos. Claude edits the data files of a local `_data` folder, or the data block of a FrameTrail project file (one HTML page), with its own tools; the plugin's skill says how, hooks run FrameTrail's validator and lint after every change and feed the errors back, and a few helper scripts do what is not JSON editing (creating a project, adding media). There is no operations CLI, no MCP server, and no editing of a server instance's files (an open editor there would overwrite them).
 
-Work proceeds in phases: S0 (scaffold, sync, lock, tests, CI), S1 (the skill, `check.mjs` and the hooks), S2 (the helpers `create-project.mjs`, `add-media.mjs`) and S3 (the evaluation with `claude plugin eval`) are done; S4 (the release) follows. The phase plan is kept outside this repository.
-
 ## Relationship to FrameTrail
 
 The plugin depends on FrameTrail only, at a pinned version, through copies (vendoring), never on a FrameTrail checkout at run time and never on another add-on.
@@ -35,7 +33,6 @@ tests/fixtures/frametrail/        FrameTrail's test data folders, synced
 tests/fixtures/frametrail-bundles/ FrameTrail's data sets as bundles, synced
 evals/                            the evaluation: one folder per case, lib/ (workspaces, checks), README.md (results)
 .github/workflows/                test.yml, drift.yml
-plans/                            git-ignored working notes
 ```
 
 `CLAUDE.md` stays at the repository root: at the plugin root Claude Code would not load it, and `claude plugin validate` warns.
@@ -77,6 +74,15 @@ Write prose without hard line breaks: one line per paragraph.
 
 `evals/` holds 13 cases (requests a user might make: questions, chapters, overlays, annotations, subtitles, the layout, new hypervideos and projects, project files, one request that is not about FrameTrail) and `dev/eval.mjs` runs them with `claude plugin eval`, each with the plugin and without it (`--ablation with-without`; `--no-baseline` leaves the second arm out), by default with Opus at 2 runs. Most of a run's tokens are the context every run loads again, so related requests share a case rather than each having its own. [evals/README.md](evals/README.md) has the cases, the checks and the latest table.
 
+```bash
+node dev/eval.mjs --tag core                     # the five core cases, with and without the plugin
+node dev/eval.mjs --case chapters --runs 1       # one case, once
+node dev/eval.mjs --no-baseline                  # only the arm with the plugin, after a change to it
+node dev/eval.mjs --grade evals/results/<time>   # grade a run again, from the copies of its workspaces
+```
+
+Every run draws on the logged-in account's usage limits, and the workspaces need ffmpeg (their videos are made once, into `evals/.cache/`). Results go to `evals/results/<time>/` (git-ignored); `--readme` writes the table into evals/README.md.
+
 - **Why it grades afterwards:** `claude plugin eval` has graders for messages, traces and file contents (`regex`, `llm`, `file_exists`, `tool_used`, …), none that runs a program, and its runs ignore project settings (`--setting-sources user`; every plugin a case names is under test and dropped from the baseline arm). So the runs keep their workspaces (`--keep-temp`), and `dev/eval.mjs` grades them with `evals/lib/checks.mjs` (FrameTrail's own checks through `check.mjs`, and the add-on's vocabulary: chapter, item, layout, noChanges, …) and removes them. It finds a workspace from the run's `tracePath` (`<root>/out/trace.jsonl`, workspace `<root>/sealed/home/cwd`, opened with `chmod 700` as the CLI says, else `<root>/home/cwd`); a missing one fails the run.
 - **Cases** live outside `plugin/` (`plugins: ["../../plugin"]` from the case folder; run from the repository root). `case.yaml` is written as JSON, so the tests read it without a YAML parser. `scaffold.sh` is one line in every case (the CLI refuses scaffold scripts that link out of the case folder, but runs them with `$0` in the case folder and the workspace as the current folder): `lib/scaffold.mjs <case>` builds the setup `expect.json` names. Scaffolded files count as there before the run for the CLI's `file_exists` and `files`.
 - **The runs** need `--allow-tools Bash Edit Write` (besides each case's `allowed_tools`) and `--scaffold`; the CLI's own grader is only `skill-fired` (`tool_used` Skill, `arm: with-only`; without `arm` the CLI scores it in the baseline arm too), and in the no-fire case `max: 0, arm: both`.
@@ -87,7 +93,9 @@ Write prose without hard line breaks: one line per paragraph.
 ```bash
 node tests/run.mjs                    # Node 20+, no dependencies, no FrameTrail checkout
 node tests/run.mjs --drift            # the same without checking the README's version (drift.yml)
+node --test-name-pattern="add-media" tests/run.mjs   # only the tests (or describe blocks) whose name matches
 claude plugin validate --strict .     # the manifests, with Claude Code's own validator
+claude --plugin-dir plugin            # try the plugin without installing it
 ```
 
 `tests/run.mjs` checks the vendored files against the lock, that the scripts load under `require()` and work together on the vendored fixtures (every file against its schema, `FrameTrailLint.checkFolder`, bundles, lint results against `RESULT_SCHEMA`, the HTML format), the docs' links, the manifests and what `plugin/` holds, each skill's frontmatter, `hooks.json`, the scripts (`check.mjs` by hand and as each hook, run as Claude Code runs them on temporary copies of the fixtures with `CLAUDE_PLUGIN_DATA` of their own; the helpers run through Node as Claude runs them, also with an empty `PATH` for a machine without FFmpeg; the test that needs FFmpeg is skipped where it is missing, as on CI), the text written for Claude (above; the checks themselves on examples that must pass and fail), the evaluation without a model (the case folders, the workspaces, every check on scripted changes, the grading of kept runs as the CLI leaves them), and the README.
@@ -97,4 +105,4 @@ The vendored fixtures have lint findings of their own (`all-types`: media withou
 - `.github/workflows/test.yml`: the tests on every push and pull request to `main`.
 - `.github/workflows/drift.yml`: weekly and by hand. It checks out FrameTrail's `develop`, compares (`dev/sync.mjs --check`), and when the vendored files would change, syncs them in the runner, prints the diff and runs the tests with `--drift`. It fails when anything would change, so a failure means: sync against a FrameTrail release or commit, review the diff, fix the text, commit.
 
-Moving to a newer FrameTrail: `node dev/sync.mjs --frametrail=<working copy at the tag or commit>` (refused for a working copy with changes where the files come from, unless `--allow-dirty`), `node tests/run.mjs`, review `git diff`, fix what the tests name, put the new version into README.md, commit.
+Moving to a newer FrameTrail: `node dev/sync.mjs --frametrail=<working copy at the tag or commit>` (without `--frametrail`: `FRAMETRAIL_DIR`, else `../frametrail`; `--check` writes nothing and exits 1 when something would change; refused for a working copy with changes where the files come from, unless `--allow-dirty`), `node tests/run.mjs`, review `git diff`, fix what the tests name, put the new version into README.md, commit.

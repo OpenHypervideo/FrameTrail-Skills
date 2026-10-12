@@ -1,10 +1,10 @@
 {
     "frametrail": {
-        "version": "v1.4.1-5-g64ebec8",
-        "commit": "64ebec813a646a1abfecd66501bf9bd1016687b7"
+        "version": "v1.4.1-7-g875059e",
+        "commit": "875059e66259601f477fb7a38bd30c54c75b5503"
     },
     "files": {
-        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "750922ae7c72680162090969874095df11acda56d8711e85e59749990743b656",
+        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "dcba3a06c2a323c80bb5aae13274d25f957578f4fe7ad1d75953bff3e868017a",
         "plugin/skills/frametrail-hypervideo/references/frametrail/HTML-FORMAT.md": "3ff9e3ed88035983890b25fd054e7304a33db4f759e2ad7b6393cafef2573d1b",
         "plugin/skills/frametrail-hypervideo/references/frametrail/TYPES.md": "4c9b2b8711370cf93c72f0a01b96acdc2b24cdea35f23941b59695bc33de2bb6",
         "plugin/vendor/frametrail/LICENSE.md": "d6da78cd95206efbd19f532dcff5675e90ce25ec6e1f8443871488e6124767b7",
@@ -15,7 +15,7 @@
         "plugin/vendor/frametrail/serialization/FrameTrailHTMLFormat.js": "7862917e784c59c83fe1f6ddc65776178c99af20d2c110f438ba5ff300e51c52",
         "plugin/vendor/frametrail/serialization/FrameTrailKeyframes.js": "af750fd790931f58181efa91a2a136cf2aed10126e4dc387925f6475a24348f1",
         "plugin/vendor/frametrail/serialization/FrameTrailLint.js": "bfd284de5352ed4ba5a715d25a02a3c5fae9df4bde87d5fb9b9c5701435211eb",
-        "plugin/vendor/frametrail/serialization/FrameTrailSerializer.js": "38183b1654feade342b6f7ae295d715a5b32c03d670098b93e5bfb01016cac97",
+        "plugin/vendor/frametrail/serialization/FrameTrailSerializer.js": "08ee3f5e4c0d468fcb26299ee482487ba7856e96b928da67cf19f42a5bed646c",
         "tests/fixtures/frametrail-bundles/lecture.json": "867379c62234f9929f281db6326cb17923db9e5d62680b0546189e8ebeb21b20",
         "tests/fixtures/frametrail-bundles/legacy.json": "d8ab60ec2f51a934e0933edfdba21f048b1af34f80de545ca069a8963886a81e",
         "tests/fixtures/frametrail-bundles/project.json": "5dcbb0ad31be0ba8f6b7cd9bbeedee8221769f94b61c6c15c25c0a01cf552dcc",
