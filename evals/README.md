@@ -71,7 +71,7 @@ Thirteen cases, two runs each by default. Related requests share a case (one run
 
 <!-- results:start -->
 
-Model opus, Claude Code 2.1.295, 2026-10-10 (2026-10-10T07-23-51-753).
+Model opus, Claude Code 2.1.327, 2026-11-18 (2026-11-18T15-35-22-545).
 
 | Case | With the plugin | Without | Δ (points) | Checks passed, with / without | Skill fired |
 |---|---|---|---|---|---|
@@ -92,10 +92,10 @@ Model opus, Claude Code 2.1.295, 2026-10-10 (2026-10-10T07-23-51-753).
 
 What failed:
 
-- **11-page-new-project**, without: hypervideo: FrameTrail cannot read trip.html: No FrameTrail data block found; 2× chapter: FrameTrail cannot read trip.html: No FrameTrail data block found; valid: FrameTrail cannot read trip.html: No FrameTrail data block found; escaped: FrameTrail cannot read trip.html: No FrameTrail data block found; hypervideo: trip.html does not exist; 2× chapter: trip.html does not exist; valid: trip.html does not exist; escaped: trip.html does not exist
+- **11-page-new-project**, without: 2× hypervideo: FrameTrail cannot read trip.html: No FrameTrail data block found; 4× chapter: FrameTrail cannot read trip.html: No FrameTrail data block found; 2× valid: FrameTrail cannot read trip.html: No FrameTrail data block found; 2× escaped: FrameTrail cannot read trip.html: No FrameTrail data block found
 - **12-page-credits**, without: 2× escaped: the data block holds 4 raw "<"
 
-52 runs; API-equivalent size 10.13 USD (on a subscription: usage, not money).
+52 runs; API-equivalent size 10.59 USD (on a subscription: usage, not money).
 
 <!-- results:end -->
 

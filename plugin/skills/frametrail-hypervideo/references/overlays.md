@@ -45,7 +45,8 @@ A card with a title and text, sliding in, its words revealed one by one, fading 
         "frametrail:attributes": {
             "title": "Key idea",
             "text": "&lt;p&gt;Cells copy their DNA before they divide.&lt;/p&gt;",
-            "box": { "background": "#ffffff", "titleColor": "#14161a", "padding": 20, "radius": 12, "shadow": true },
+            "box": { "shape": "rounded", "background": "#ffffff", "titleColor": "#14161a", "padding": 20, "radius": 12, "shadow": true },
+            "autoSize": "height",
             "animation": {
                 "in": { "preset": "slideFromBottom" },
                 "text": { "preset": "fadeUp", "mode": "word" },
@@ -58,7 +59,8 @@ A card with a title and text, sliding in, its words revealed one by one, fading 
 ```
 
 - `target.source` is the hypervideo's video: its first clip's `src` (or, when the clip names only a `resourceId`, that resource's `src`). Copy it from an item already there.
-- `attributes.text` is HTML, stored escaped (`&lt;p&gt;`). Without `box` the text is drawn straight over the video, which only reads well on a calm picture.
+- `attributes.text` is HTML, stored escaped (`&lt;p&gt;`). Without `box` the text is drawn straight over the video, which only reads well on a calm picture. `box.shape` puts it in a `rectangle`, a `rounded` rectangle, a `circle`, a `speechBubble` (its tail pointing to `box.direction`), a `cloud` or a block `arrow`.
+- `"autoSize": "height"` makes the box as high as its content, so the text is never cut off, and FrameTrail's editor keeps the height fitting from then on. Still give the box about the height the text needs: the overlap check uses the stored box.
 
 ## A hotspot
 
@@ -95,12 +97,14 @@ A circle on something in the picture that jumps to 1:35 when clicked. The video 
             "animation": { "in": { "preset": "popIn" }, "emphasis": { "preset": "pulse" } }
         }
     },
-    "frametrail:events": { "onStart": "FrameTrail.module('HypervideoController').pause();" }
+    "frametrail:events": {},
+    "frametrail:pause": true
 }
 ```
 
 - Actions: `openUrl` (`actionTarget` a URL), `jumpToTime` (`actionTarget` seconds, on the media's timeline like every time here), `jumpToHypervideo` (`actionTarget` a hypervideo id, `actionTargetTime` where to start it). `actionTargetTime` is for `jumpToHypervideo` only: a `jumpToTime` with only `actionTargetTime` jumps to 0.
-- The `onStart` event is the one piece of code you write without being asked, because FrameTrail's editor gives every new hotspot and quiz this pause. Leave `frametrail:events` empty (`{}`) when the video should go on.
+- `"frametrail:pause": true` pauses the video at the item's start (when playback reaches it, not when someone seeks into its span). FrameTrail's editor sets it for new quizzes and plain hotspots; leave it out when the video should go on.
+- Older hotspots and quizzes pause with code instead: an `onStart` in `frametrail:events` that only calls `pause()`, which FrameTrail reads as `frametrail:pause`. Never write that form. When you change such an item's pause, set `frametrail:pause` and remove the call, as FrameTrail's editor does; otherwise leave it.
 - Drawn marks point something out instead: `"shape": "arrow"` (with `direction` and `curve`), `"underline"`, `"freeform"` (an outline in `points`). Give them `"animation": { "in": { "preset": "draw" } }` and no pause.
 
 ## A quiz
@@ -132,19 +136,23 @@ A circle on something in the picture that jumps to 1:35 when clicked. The video 
             "questionType": "multipleChoice",
             "question": "Which molecule carries genetic information?",
             "answers": [
-                { "text": "DNA", "correct": true },
-                { "text": "ATP", "correct": false },
-                { "text": "Glucose", "correct": false }
-            ],
-            "onCorrectAnswer": { "showText": "Right: DNA stores the genetic code.", "resumePlayback": true, "jumpForward": false },
-            "onWrongAnswer": { "showText": "Not quite. Watch this part again.", "resumePlayback": true, "jumpBackward": 30 }
+                { "text": "DNA", "correct": true, "action": "", "feedback": "Right: DNA stores the genetic code." },
+                { "text": "ATP", "correct": false, "action": "jumpToTime", "actionTarget": 90, "feedback": "Not quite. Watch this part again." },
+                { "text": "Glucose", "correct": false, "action": "jumpToTime", "actionTarget": 90, "feedback": "Not quite. Watch this part again." }
+            ]
         }
     },
-    "frametrail:events": { "onStart": "FrameTrail.module('HypervideoController').pause();" }
+    "frametrail:events": {},
+    "frametrail:pause": true
 }
 ```
 
 A quiz needs room: half the frame or more. Its question and answers are plain text.
+
+- In a `multipleChoice` quiz each answer says what happens when it is chosen: `action` `""` plays on, `pause` stays paused, and `jumpToTime`, `jumpToHypervideo` and `openUrl` work as for hotspots; `feedback` is shown with the result. `correct` decides nothing: it only shows the answer as right or wrong afterwards.
+- Where several viewers answer one quiz (an annotation, also on paired phones), the answer with the most votes decides; on a tie, or when nobody answered, the one with `"default": true` (at most one).
+- `multiSelect`, `freeText` and `rating` quizzes have one outcome for any answer: `onAnswered`, with the same `action`, `actionTarget`, `actionTargetTime` and `feedback`.
+- Older quizzes have `onCorrectAnswer` and `onWrongAnswer` (and `onAnswered` with `showText` and `resumePlayback`), read only while no answer and no `onAnswered` has an `action`. Never write them. To change what happens after such a quiz is answered, convert it whole, as FrameTrail's editor does, and remove them: each answer gets the outcome of its `correct` (`showText` → `feedback`, `resumePlayback: false` → `pause`, `jumpForward` and `jumpBackward` → `jumpToTime` that many seconds after or before the quiz's start, defaults as in TYPES.md); a `multiSelect` quiz keeps its correct outcome, as `onAnswered`.
 
 ## Media and embeds
 

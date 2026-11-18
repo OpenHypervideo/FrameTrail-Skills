@@ -83,7 +83,7 @@
         {
             "id": "empty-required",
             "severity": "error",
-            "description": "An overlay, annotation or code snippet lacks what its type needs: a source (embedded media, pages, files), text (text: text or title), HTML (html), a question and answers (quiz; answers for multipleChoice and multiSelect, each with text), a position (location: lat and lon), data (chart), the target of a hotspot's action, code (code snippet)."
+            "description": "An overlay, annotation or code snippet lacks what its type needs: a source (embedded media, pages, files), text (text: text or title, or a shape with a fill or an outline), HTML (html), a question and answers (quiz; answers for multipleChoice and multiSelect, each with text), a position (location: lat and lon), data (chart), the target of an action (a hotspot's, a quiz answer's, a quiz's onAnswered), code (code snippet)."
         },
         {
             "id": "missing-license",
@@ -99,6 +99,16 @@
             "id": "cue-outside-video",
             "severity": "warning",
             "description": "Subtitle cues start at or after the end of the video: the subtitles may belong to another video. Reported once per language. Checked only for a clip without an out point (a trimmed video's subtitles go on after the out point)."
+        },
+        {
+            "id": "circular-view-unshown",
+            "severity": "warning",
+            "description": "The circular area (config.layoutArea.areaCircular) holds a view that is not shown as stored: only one collection (TimedContent) is shown there. A view of another type is ignored, and a large one is shown as medium."
+        },
+        {
+            "id": "quiz-defaults",
+            "severity": "warning",
+            "description": "A quiz marks more than one answer as default (the answer decided on a tie or when nobody answers). Only the first counts."
         }
     ];
 
@@ -528,7 +538,10 @@
                 } else if (type === 'location') {
                     if (!isFinite(parseFloat(attrs.lat)) || !isFinite(parseFloat(attrs.lon))) { missing.push('no position (lat, lon)'); }
                 } else if (type === 'text') {
-                    if (plainText(attrs.text) === '' && plainText(attrs.title) === '') { missing.push('no text'); }
+                    // A shape that shows (a fill or an outline) is complete without text
+                    var box   = isObject(attrs.box) ? attrs.box : {},
+                        shows = (nonEmpty(box.background) && box.background !== 'transparent') || box.borderWidth > 0;
+                    if (plainText(attrs.text) === '' && plainText(attrs.title) === '' && !shows) { missing.push('no text'); }
                 } else if (type === 'html') {
                     if (!nonEmpty(attrs.text)) { missing.push('no HTML'); }
                 } else if (type === 'quiz') {
@@ -543,11 +556,16 @@
                     }
                 } else if (type === 'chart') {
                     if (!nonEmpty(attrs.data)) { missing.push('no data'); }
-                } else if (type === 'hotspot') {
-                    if (TARGETED_ACTIONS.indexOf(attrs.action) >= 0
-                            && (attrs.actionTarget === undefined || attrs.actionTarget === null || (typeof attrs.actionTarget === 'string' && attrs.actionTarget.trim() === ''))) {
-                        missing.push('no target for its action ' + attrs.action);
-                    }
+                }
+
+                if (type === 'hotspot' || type === 'quiz') {
+                    Serializer.actionHolders(attrs).forEach(function(holder) {
+                        if (TARGETED_ACTIONS.indexOf(holder.action) >= 0
+                                && (holder.actionTarget === undefined || holder.actionTarget === null || (typeof holder.actionTarget === 'string' && holder.actionTarget.trim() === ''))) {
+                            var whose = (holder === attrs) ? 'its action' : (holder === attrs.onAnswered) ? 'the action after answering' : 'the action of answer ' + (attrs.answers.indexOf(holder) + 1);
+                            missing.push('no target for ' + whose + ' ' + holder.action);
+                        }
+                    });
                 }
 
                 if (missing.length) {
@@ -604,6 +622,35 @@
                         + ' at or after the end of the video (' + n(data.info.end) + ' s), the first at ' + n(late[0].start) + ' s.');
                 }
             });
+
+        },
+
+        'quiz-defaults': function(data, report) {
+
+            data.items.forEach(function(entry) {
+                var body    = bodyOf(entry.item),
+                    answers = (body['frametrail:type'] === 'quiz' && Array.isArray(attributesOf(body).answers)) ? attributesOf(body).answers : [],
+                    marked  = [];
+                answers.forEach(function(answer, i) { if (isObject(answer) && answer['default'] === true) { marked.push(i + 1); } });
+                if (marked.length > 1) {
+                    report(entry.where, 'Marks answers ' + marked.join(', ') + ' as default: on a tie, or when nobody answers, only the first of them (answer ' + marked[0] + ') is decided.');
+                }
+            });
+
+        },
+
+        'circular-view-unshown': function(data, report) {
+
+            var layout = isObject(data.hypervideo.config) && isObject(data.hypervideo.config.layoutArea) ? data.hypervideo.config.layoutArea : {},
+                view   = Array.isArray(layout.areaCircular) ? layout.areaCircular[0] : null;
+
+            if (!isObject(view)) { return; }
+
+            if (view.type !== undefined && view.type !== 'TimedContent') {
+                report({ kind: 'hypervideo' }, 'The ring around the video holds a ' + view.type + ' view, which it does not show: only a collection of annotations (TimedContent) is shown there.');
+            } else if (view.contentSize === 'large') {
+                report({ kind: 'hypervideo' }, 'The ring around the video holds a large view; it is shown, and saved, as medium.');
+            }
 
         }
 

@@ -15,7 +15,7 @@ The bundle holds the same files as a `_data` folder, under other names:
 | `hypervideos/<id>/subtitles/<lang>.vtt` | `hypervideos.<id>.subtitles.<lang>`: the WebVTT text as a JSON string |
 | `resources/_index.json` | `resources` |
 | `tagdefinitions.json` | `tagdefinitions` |
-| `config.json` | `config`: only the playback settings (`defaultTheme`, `defaultLanguage`, `videoFit`, overview settings) |
+| `config.json` | `config`: only the playback settings (`theme`, `defaultLanguage`, `videoFit`, overview settings) |
 | `custom.css` | `customCSS` |
 
 ```jsonc

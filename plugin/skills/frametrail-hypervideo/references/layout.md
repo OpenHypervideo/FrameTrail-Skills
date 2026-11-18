@@ -2,6 +2,8 @@
 
 `hypervideo.json` → `config.layoutArea` has four areas around the video: `areaTop`, `areaBottom`, `areaLeft`, `areaRight`. Each is a list of content views, shown as tabs when there are several; an empty list leaves the area out. The left and right areas are narrow columns, top and bottom wide rows: running text (annotations, a transcript) fits left or right, timelines fit top or bottom.
 
+Two more areas take views only when asked for: `areaCircular`, one `TimedContent` view (`small` or `medium`) shown as annotation thumbnails in rings around the video, and `areaCompanion`, the views a phone paired with the player shows instead of the player itself. What each does with its views: [DATA-MODEL.md](frametrail/DATA-MODEL.md) (`config.layoutArea`).
+
 A content view is told apart by its `type`. Every view takes `name` (its tab label), `contentSize` (`small`, `medium`, `large`), `initClosed` (start with the area collapsed), `icon` and `cssClass`.
 
 **Annotations in sync with the video** (`TimedContent`); `collectionFilter` limits them by tags, types, user ids or text, empty lists meaning all:

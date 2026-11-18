@@ -77,6 +77,8 @@ Its index, with this user's entry next to an existing one:
 
 Annotations appear in the hypervideo's content views: a `TimedContent` view shows them in sync with the video, a `Timelines` view as bars per user (see [layout.md](layout.md)). A hypervideo without such a view shows no annotations: say so, and offer to add one. A view's `collectionFilter` may limit it to some users, types or tags; check it includes what you add.
 
+An annotation with `"frametrail:pause": true` pauses the video at its start only while it is shown: in an open content view, or on phones paired with the player. A `quiz` annotation is answered there, by every viewer at once: its answers' actions decide as in an overlay ([overlays.md](overlays.md#a-quiz)), and `countdown` gives the viewers that many seconds to answer.
+
 ## Changing and removing
 
 Only in the user's own file. Find an annotation by its `created`, change only what was asked, set `generator`, and give the index entry a new `lastchanged`. Never write other users' files.

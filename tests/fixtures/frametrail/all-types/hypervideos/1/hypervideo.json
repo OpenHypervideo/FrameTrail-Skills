@@ -15,7 +15,6 @@
         "autohideControls": false,
         "captionsVisible": true,
         "clipTimeVisible": false,
-        "theme": "",
         "layoutArea": {
             "areaTop": [
                 {
@@ -95,6 +94,60 @@
                     "initClosed": true,
                     "html": "<p>Custom HTML with a <span class=\"timebased\" data-start=\"20\" data-end=\"40\">time-based</span> part.</p>"
                 }
+            ],
+            "areaCompanion": [
+                {
+                    "type": "TimedContent",
+                    "name": "",
+                    "description": "",
+                    "icon": "",
+                    "cssClass": "",
+                    "contentSize": "large",
+                    "initClosed": false,
+                    "collectionFilter": {
+                        "tags": [],
+                        "types": [],
+                        "users": [],
+                        "text": ""
+                    },
+                    "onClickContentItem": ""
+                },
+                {
+                    "type": "Chapters",
+                    "name": "Chapters",
+                    "description": "",
+                    "icon": "icon-list-bullet",
+                    "cssClass": "",
+                    "contentSize": "medium",
+                    "initClosed": false,
+                    "collectionFilter": {
+                        "tags": [],
+                        "types": [],
+                        "users": [],
+                        "text": ""
+                    }
+                }
+            ],
+            "areaCircular": [
+                {
+                    "type": "TimedContent",
+                    "name": "Ring",
+                    "description": "",
+                    "icon": "",
+                    "cssClass": "",
+                    "contentSize": "medium",
+                    "initClosed": false,
+                    "collectionFilter": {
+                        "tags": [],
+                        "types": [],
+                        "users": [],
+                        "text": ""
+                    },
+                    "onClickContentItem": "",
+                    "filterAspect": "creatorId",
+                    "zoomControls": false,
+                    "ringGap": 12
+                }
             ]
         }
     },
@@ -159,6 +212,7 @@
                         "radius": 14,
                         "shadow": true
                     },
+                    "autoSize": "height",
                     "animation": {
                         "in": {
                             "preset": "slideFromBottom"
@@ -329,9 +383,8 @@
                     }
                 }
             },
-            "frametrail:events": {
-                "onStart": "FrameTrail.module('HypervideoController').pause();"
-            }
+            "frametrail:events": {},
+            "frametrail:pause": true
         },
         {
             "@context": [
@@ -1255,6 +1308,182 @@
                     "html": "<blockquote class=\"bluesky-embed\"><p lang=\"en\">Hello from Bluesky.</p></blockquote>"
                 }
             }
+        },
+        {
+            "@context": [
+                "http://www.w3.org/ns/anno.jsonld",
+                "https://frametrail.org/ns/context.jsonld"
+            ],
+            "creator": {
+                "nickname": "demo",
+                "type": "Person",
+                "id": "1"
+            },
+            "created": "2026-10-07T09:30:27.137Z",
+            "type": "Annotation",
+            "frametrail:type": "Overlay",
+            "frametrail:tags": [],
+            "target": {
+                "type": "Video",
+                "source": "1_1790000000_fixture-lecture.mp4",
+                "selector": {
+                    "conformsTo": "http://www.w3.org/TR/media-frags/",
+                    "type": "FragmentSelector",
+                    "value": "t=56,64&xywh=percent:34,78,14,14"
+                }
+            },
+            "body": {
+                "type": "TextualBody",
+                "frametrail:type": "text",
+                "format": "text/html",
+                "value": "",
+                "frametrail:name": "Speech Bubble",
+                "frametrail:attributes": {
+                    "text": "&lt;p&gt;&lt;span style=&quot;font-size: 22px;&quot;&gt;Hello!&lt;/span&gt;&lt;/p&gt;",
+                    "box": {
+                        "shape": "speechBubble",
+                        "direction": "downLeft",
+                        "radius": 18,
+                        "background": "#ffffff",
+                        "textColor": "#14161a",
+                        "padding": 16,
+                        "shadow": true
+                    },
+                    "autoSize": "height"
+                }
+            },
+            "frametrail:events": {}
+        },
+        {
+            "@context": [
+                "http://www.w3.org/ns/anno.jsonld",
+                "https://frametrail.org/ns/context.jsonld"
+            ],
+            "creator": {
+                "nickname": "demo",
+                "type": "Person",
+                "id": "1"
+            },
+            "created": "2026-10-07T09:30:28.137Z",
+            "type": "Annotation",
+            "frametrail:type": "Overlay",
+            "frametrail:tags": [],
+            "target": {
+                "type": "Video",
+                "source": "1_1790000000_fixture-lecture.mp4",
+                "selector": {
+                    "conformsTo": "http://www.w3.org/TR/media-frags/",
+                    "type": "FragmentSelector",
+                    "value": "t=58,66&xywh=percent:50,78,14,14"
+                }
+            },
+            "body": {
+                "type": "TextualBody",
+                "frametrail:type": "text",
+                "format": "text/html",
+                "value": "",
+                "frametrail:name": "Block Arrow",
+                "frametrail:attributes": {
+                    "text": "&lt;p&gt;&lt;span style=&quot;font-size: 22px;&quot;&gt;Look here&lt;/span&gt;&lt;/p&gt;",
+                    "box": {
+                        "shape": "arrow",
+                        "direction": "up",
+                        "background": "#ffd23f",
+                        "textColor": "#14161a",
+                        "padding": 16,
+                        "borderWidth": 2,
+                        "borderColor": "#14161a"
+                    }
+                }
+            },
+            "frametrail:events": {}
+        },
+        {
+            "@context": [
+                "http://www.w3.org/ns/anno.jsonld",
+                "https://frametrail.org/ns/context.jsonld"
+            ],
+            "creator": {
+                "nickname": "demo",
+                "type": "Person",
+                "id": "1"
+            },
+            "created": "2026-10-07T09:30:29.137Z",
+            "type": "Annotation",
+            "frametrail:type": "Overlay",
+            "frametrail:tags": [],
+            "target": {
+                "type": "Video",
+                "source": "1_1790000000_fixture-lecture.mp4",
+                "selector": {
+                    "conformsTo": "http://www.w3.org/TR/media-frags/",
+                    "type": "FragmentSelector",
+                    "value": "t=60,68&xywh=percent:66,78,14,14"
+                }
+            },
+            "body": {
+                "type": "TextualBody",
+                "frametrail:type": "hotspot",
+                "format": "text/html",
+                "frametrail:name": "Hotspot",
+                "frametrail:attributes": {
+                    "shape": "rounded",
+                    "color": "#ffffff",
+                    "borderWidth": 2,
+                    "borderRadius": 12,
+                    "backgroundColor": "#0096ff",
+                    "pulse": true,
+                    "text": "Open the article",
+                    "textColor": "#ffffff",
+                    "action": "openUrl",
+                    "actionTarget": "https://example.org/article"
+                }
+            },
+            "frametrail:events": {}
+        },
+        {
+            "@context": [
+                "http://www.w3.org/ns/anno.jsonld",
+                "https://frametrail.org/ns/context.jsonld"
+            ],
+            "creator": {
+                "nickname": "demo",
+                "type": "Person",
+                "id": "1"
+            },
+            "created": "2026-10-07T09:30:30.137Z",
+            "type": "Annotation",
+            "frametrail:type": "Overlay",
+            "frametrail:tags": [],
+            "target": {
+                "type": "Video",
+                "source": "1_1790000000_fixture-lecture.mp4",
+                "selector": {
+                    "conformsTo": "http://www.w3.org/TR/media-frags/",
+                    "type": "FragmentSelector",
+                    "value": "t=62,70&xywh=percent:82,78,14,14"
+                }
+            },
+            "body": {
+                "type": "TextualBody",
+                "frametrail:type": "text",
+                "format": "text/html",
+                "value": "",
+                "frametrail:name": "Cloud",
+                "frametrail:attributes": {
+                    "text": "&lt;p&gt;&lt;span style=&quot;font-size: 22px;&quot;&gt;Hmm …&lt;/span&gt;&lt;/p&gt;",
+                    "box": {
+                        "shape": "cloud",
+                        "direction": "none",
+                        "background": "#ffffff",
+                        "textColor": "#14161a",
+                        "padding": 16,
+                        "shadow": true
+                    },
+                    "autoSize": "height"
+                }
+            },
+            "frametrail:events": {}
         },
         {
             "@context": [

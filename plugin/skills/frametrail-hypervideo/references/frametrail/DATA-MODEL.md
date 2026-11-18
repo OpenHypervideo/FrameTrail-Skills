@@ -24,7 +24,7 @@ The schemas follow JSON Schema draft 2020-12, restricted to a small subset (see 
 
 [`common.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/common.schema.json) holds the definitions the others share: dates, creators, selectors, keyframes, the animation spec.
 
-Each schema's `$id` is `https://frametrail.org/schemas/1/<file>`. The `1` is the version of the data format. Additions that existing data does not need to change for — a new optional property, a new overlay type, a new animation preset — keep the number; a change to the meaning or shape of existing data gets a new one. The `$id`s are identifiers: the files live in this repository, and references between them are relative, so a validator loads the folder and never fetches anything.
+Each schema's `$id` is `https://frametrail.org/schemas/1/<file>`. The `1` is the version of the data format. Additions that existing data does not need to change for — a new optional property, a new overlay type, a new animation preset — keep the number; a change to the meaning or shape of existing data gets a new one. The `$id`s are identifiers: the files live in this repository, and references between them are relative, so a validator loads the folder and never fetches anything. The schemas of the latest release are also published at those URLs, listed at [frametrail.org/schemas/1](https://frametrail.org/schemas/1/), for tools that load schemas by URL.
 
 Any 2020-12 validator works. With [Ajv](https://ajv.js.org/) in Node:
 
@@ -62,13 +62,32 @@ validator.validate('hypervideo.schema.json', JSON.parse(fs.readFileSync('_data/h
 
 A name is resolved against `https://frametrail.org/schemas/1/`; a fragment selects a definition (`common.schema.json#/$defs/keyframe`). The player carries a copy of the schemas without titles and descriptions (`FrameTrailSchemas.js` in the same folder, written by `node scripts/bundle-schemas.mjs`) and validates what scripts and extensions give it to store. The same script writes [TYPES.md](TYPES.md), the reference of the item types: what each is for and the attributes it takes, from the descriptions in `schemas/attributes/`. The tests in [`tests/`](https://github.com/OpenHypervideo/FrameTrail/blob/main/tests/README.md) hold valid and invalid documents, with the errors expected for each, and the exact rules for messages, so that validators in other languages can be checked against the same fixtures.
 
+### Checking files in an editor
+
+FrameTrail does not write `$schema` into the files it stores. To have an editor check the files of a data folder and show the schemas' descriptions while you edit them, map the files to the published schemas. In VS Code, in `settings.json`:
+
+```json
+"json.schemas": [
+    { "fileMatch": ["**/_data/config.json"],                           "url": "https://frametrail.org/schemas/1/config.schema.json" },
+    { "fileMatch": ["**/_data/tagdefinitions.json"],                   "url": "https://frametrail.org/schemas/1/tagdefinitions.schema.json" },
+    { "fileMatch": ["**/_data/resources/_index.json"],                 "url": "https://frametrail.org/schemas/1/resources-index.schema.json" },
+    { "fileMatch": ["**/_data/hypervideos/_index.json"],               "url": "https://frametrail.org/schemas/1/hypervideos-index.schema.json" },
+    { "fileMatch": ["**/_data/hypervideos/*/hypervideo.json"],         "url": "https://frametrail.org/schemas/1/hypervideo.schema.json" },
+    { "fileMatch": ["**/_data/hypervideos/*/annotations/_index.json"], "url": "https://frametrail.org/schemas/1/annotations-index.schema.json" },
+    { "fileMatch": ["**/_data/hypervideos/*/annotations/*.json", "!**/annotations/_index.json"],
+      "url": "https://frametrail.org/schemas/1/annotation-file.schema.json" }
+]
+```
+
+Where a data folder has another name, put it in place of `_data`. JetBrains IDEs take the same mappings in Settings → Languages & Frameworks → Schemas and DTDs → JSON Schema Mappings.
+
 ## File Layout
 
 ```
 _data/
 ├── config.json                  # instance settings (public on a public instance)
 ├── users.json                   # accounts and their API token hashes — not covered here, never exported
-├── tagdefinitions.json          # tag labels and descriptions per language
+├── tagdefinitions.json          # tags: label and description per tag id
 ├── custom.css                   # global CSS, including custom themes
 ├── resources/
 │   ├── _index.json              # the resource library
@@ -82,7 +101,7 @@ _data/
 │       │   └── <userId>.json    # one user's annotations
 │       └── subtitles/
 │           └── <lang>.vtt       # WebVTT, one file per language
-├── .auth/                       # secrets and external-auth state — never served, never exported
+├── .auth/                       # secrets and external-auth state (also the pairing grant secret, pairing_grant.php) — never served, never exported
 ├── .collab/                     # presence and locks — ephemeral, never exported
 ├── .extensions/<name>/          # server extensions' own state — never served, never exported
 └── .htaccess                    # privacy gate of a private instance (Apache), written by FrameTrail
@@ -109,6 +128,7 @@ A **hypervideo bundle** holds one hypervideo and everything it needs:
         "files": { "1": [ … ] }                       // annotations/1.json, keyed by file id
     },
     "resources": { "51": { … } },                     // the resource entries it uses: its clip, items made from resources
+    "tagdefinitions": { "fact-check": { … } },        // the definitions of the tags its items name
     "subtitles": { "en": "WEBVTT\n\n00:00.000 --> …" } // subtitle files as text, keyed by srclang
 }
 ```
@@ -120,15 +140,15 @@ A **project bundle** holds a library:
     "bundle": "project",
     "formatVersion": 1,
     "hypervideosIndex": { … },                        // hypervideos/_index.json, with the overview map
-    "hypervideos": { "9": { "bundle": "hypervideo", … } },  // keyed as in hypervideosIndex; without "resources"
+    "hypervideos": { "9": { "bundle": "hypervideo", … } },  // keyed as in hypervideosIndex; without "resources" and "tagdefinitions"
     "resources": { … },                               // resources/_index.json
     "tagdefinitions": { … },
-    "config": { "defaultTheme": "studio", "defaultLanguage": "en" },
+    "config": { "theme": "studio", "defaultLanguage": "en" },
     "customCSS": "…"                                  // custom.css
 }
 ```
 
-`config` carries only the settings that decide how the library looks and plays: `defaultTheme`, `defaultLanguage`, `videoFit`, `overviewMode`, `overviewTitle` and `overviewShowSearchBar`. Accounts, authentication, privacy and upload settings belong to an instance and never travel. A project bundle never contains `users.json` or anything from the dot-folders (`.auth/`, `.collab/` and any other).
+`config` carries only the settings that decide how the library looks and plays: `theme`, `defaultLanguage`, `videoFit`, `overviewMode`, `overviewTitle` and `overviewShowSearchBar`. Accounts, authentication, privacy and upload settings belong to an instance and never travel. A project bundle never contains `users.json` or anything from the dot-folders (`.auth/`, `.collab/` and any other).
 
 A hypervideo's `globalEvents`, `customCSS` and code snippets are JavaScript and CSS that run in the viewer's browser. An importer should show them and ask before taking them.
 
@@ -189,10 +209,12 @@ Lint.checkFolder(files);   // a _data folder in the folder format → [{ path, m
 | `item-partly-outside` | warning | an overlay or annotation that runs past the end of the video or begins before its start |
 | `overlay-overlap` | warning | two overlays covering the same area at the same time; hotspots and cursors are meant to lie over others and are left out |
 | `unknown-resource` | warning | the clip or an item naming a resource that is not in the library |
-| `empty-required` | error | an item lacking what its type needs: a source, text, HTML, a question and answers, a position, chart data, the target of a hotspot's action, code |
+| `empty-required` | error | an item lacking what its type needs: a source, text (or a visible shape), HTML, a question and answers, a position, chart data, the target of an action (a hotspot's, a quiz answer's, a quiz's `onAnswered`), code |
 | `missing-license` | warning | an overlay made from a library resource, or showing a media file, without a licence type |
 | `chapter-order` | warning | chapters not stored in order of their start, or two with the same start |
 | `cue-outside-video` | warning | subtitle cues that start at or after the end of the video, so probably belong to another one |
+| `circular-view-unshown` | warning | a view in the ring around the video (`areaCircular`) that is not shown as stored: another type than a collection (`TimedContent`), or a large one (shown as medium) |
+| `quiz-defaults` | warning | a quiz that marks more than one answer as default (decided on a tie or when nobody answers): only the first counts |
 
 `checkFolder()` looks at a whole folder for files that do not agree with each other, and for the files no schema describes: a `.json` file that is not JSON; a `.vtt` file the player cannot read as meant (no `WEBVTT` header, a cue timing it does not read, a cue that ends before it starts; `checkVTT(text)` checks one text); a hypervideo `hypervideos/_index.json` lists without its `hypervideo.json`, or one it does not list; a hypervideo without `annotations/_index.json`; an annotation file without its entry in that index, or an entry without its file; a `subtitles` entry without its `.vtt` file, or a `.vtt` file no entry names. A project file is checked through its folder, `FrameTrailHTMLFormat.readProject(html).files`.
 
@@ -206,15 +228,23 @@ Instance settings. Missing keys mean the defaults in the schema. On a public ins
 
 Booleans are strict. The server refuses uploads only when `allowUploads` is `false` and treats an instance as private only when `alwaysForceLogin` is `true`; the strings `"false"` and `"true"` do neither. [docs/INTEGRATION.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/INTEGRATION.md#writing-the-settings) lists the settings with what a missing key means and when a change takes effect; [docs/DEPLOYMENT.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/DEPLOYMENT.md#configuration) covers `externalAuth`, `externalSettings`, `userAvatars` and `apiTokens`.
 
+`pairingBrokerURL`, `pairingButtonVisible` and `pairingCompanionURL` set up pairing with phones ([docs/PAIRING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/PAIRING.md)): the broker phones and the player find each other through (a URL, or a path on the player's own server; empty: pairing off), whether the player controls offer the pairing button, and the page a phone opens (empty: `companion.html` beside the player page). What a paired phone shows is per hypervideo, in its `config.layoutArea.areaCompanion`.
+
 `extensions` lists extensions the instance loads, each `{ name, script, style, settings }` ([docs/EXTENDING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/EXTENDING.md#writing-an-extension)). `script` and `style` are paths relative to the page, so on its origin; the player refuses anything else. `settings` is handed to the extension's `init()` untouched; FrameTrail neither reads nor validates it, so the schema leaves it open. An extension that cannot be loaded is skipped, so a `_data` directory naming one works on an installation that does not have it. An entry also switches on the extension's server part, if the installation has one in `_server/extensions/<name>/`.
 
 ### `tagdefinitions.json`
 
 ```json
-{ "lecture": { "en": { "label": "Lecture", "description": "…" }, "de": { "label": "Vorlesung", "description": "…" } } }
+{ "fact-check": { "label": "Fact check", "description": "Claims checked against sources." } }
 ```
 
-Tag names are the keys. Items refer to tags by name in `frametrail:tags`.
+The tags of the instance, keyed by id: each has a `label` and an optional `description`. Items refer to tags by id in `frametrail:tags`; a content view's `collectionFilter.tags` shows the annotations having any of the tags it lists. Only editors see labels and descriptions: in the tag pickers and in Manage Tags.
+
+Annotation thumbnails carry their tag ids as class names (`resourceThumb fact-check`), so global CSS can style tagged annotations. That is why an id never changes: renaming a tag changes its label only. FrameTrail makes the id of a new tag from its label, as a class name: lowercase letters, digits and dashes, starting with a letter (`Größe` → `grosse`, `2024` → `tag-2024`), with `-2`, `-3`, … when it is taken. Ids in older files may have other characters.
+
+An item may name a tag that is not defined, for instance after the tag was deleted: deleting removes only the definition. Such a tag shows as its id, marked as no longer defined, until the item's author removes it or the tag is defined again with that id.
+
+Older files have a label and description per language code (`{ "lecture": { "en": { "label": "Lecture" }, "de": { "label": "Vorlesung" } } }`). FrameTrail reads the label in the interface language, else the English one, else the first, and writes the one-label form the first time the tag is edited.
 
 ### `resources/_index.json`
 
@@ -235,12 +265,15 @@ A video entry may still carry `subtitles` (file names keyed by language) from ea
         "backgroundColor": "#2f3139",
         "fit": "contain",                              // or "cover"
         "lastchanged": 1788942480663,                  // compare-and-swap token, milliseconds
-        "markers": { "9": { "x": 0.371, "y": 0.182, "size": 6.08 } }
+        "markers": {
+            "9": { "x": 0.371, "y": 0.182, "size": 6.08 },                       // one pin
+            "1": [ { "x": 0.2, "y": 0.6, "size": 6 }, { "x": 0.8, "y": 0.3 } ]   // placed twice
+        }
     }
 }
 ```
 
-The overview shows the hypervideos as a grid or, when `config.json` has `overviewMode: "map"`, as pins on the map's background. Marker `x`/`y` are the pin's centre in 0–1 of the background image, `size` its diameter in percent of the stage width; a hypervideo without a marker is not on the map. The map is content, so it lives here rather than in the settings.
+The overview shows the hypervideos as a grid or, when `config.json` has `overviewMode: "map"`, as pins on the map's background. Markers are keyed by hypervideo id; a marker is one pin, or a list of pins for a hypervideo placed more than once (FrameTrail writes a single pin as the pin itself, never as a list of one). A pin's `x`/`y` are its centre in 0–1 of the background image, `size` its diameter in percent of the stage width; a hypervideo without a marker is not on the map. The map is content, so it lives here rather than in the settings.
 
 ### `hypervideos/<id>/hypervideo.json`
 
@@ -248,7 +281,7 @@ The overview shows the hypervideos as a grid or, when `config.json` has `overvie
 {
     "meta": { "name": "…", "description": "…", "thumb": "…", "creator": "demo", "creatorId": "1",
               "created": 1783322367127, "lastchanged": 1791235975527 },
-    "config": { "slidingMode": "adjust", "theme": "", "autohideControls": false, "captionsVisible": false,
+    "config": { "slidingMode": "adjust", "autohideControls": false, "captionsVisible": false,
                 "clipTimeVisible": false, "slidingTrigger": "key",
                 "layoutArea": { "areaTop": [], "areaBottom": [], "areaLeft": [], "areaRight": [ { "type": "Transcript", … } ] } },
     "clips": [ { "resourceId": "51", "src": "1_1783322343_lecture.mp4", "duration": 0, "in": 0, "out": 0 } ],
@@ -262,10 +295,11 @@ The overview shows the hypervideos as a grid or, when `config.json` has `overvie
 
 - **`meta.lastchanged`** is the compare-and-swap token of server-mode saves: a save carries the value it loaded, and the server refuses it when the file has changed since. A tool that writes this file must change it, or an editor that has the hypervideo open overwrites the tool's change with its next save. In local-folder mode the token is the file's modification time instead, so there any write is noticed (the editor shows that the hypervideo changed and refuses to save over it); a tool should still change `lastchanged`, for the same folder served by PHP.
 - **`clips`** — only the first clip is played. `src` is a file name in `_data/resources/` or a URL (MP4, WebM, HLS, YouTube, Vimeo). Without `src` and `resourceId` the hypervideo has no video, just a timeline of `duration` seconds. `in` and `out` clip the media: the hypervideo shows the media from `in` to `out` (`0` or missing: its end).
-- **`config.layoutArea`** — the content views around the video, in four areas. A content view is told apart by `type`: `TimedContent` (a collection of annotations, filtered by `collectionFilter`), `CustomHTML`, `Transcript` (built from the subtitles of `transcriptSource`; empty, or a language without subtitles, means the first subtitles), `Timelines` and `Chapters`. A transcript view is stored as a transcript; only an export that has to stand alone may turn it into `CustomHTML`.
+- **`config.layoutArea`** — the content views around the video, in four areas, and those of a phone paired with the player in `areaCompanion` ([docs/PAIRING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/PAIRING.md)): never shown in the player itself; medium views are laid out like the right area's, a large collection shows the annotations at full size in a swipeable row that follows the playback, and a small view is shown (and saved) as medium; empty or missing means the phone shows no views. `areaCircular` holds one collection (`TimedContent`) shown as a grid of annotation thumbnails in rings around the video, clockwise in time from the cell left of the video's bottom edge; the video shrinks to make room for more rings. It is small or medium (a large view is shown, and saved, as medium), a view of another type is not shown, and at 768 px player width or less, or when the thumbnails do not fit around the video, they form a row below the video instead; empty or missing means no ring. The view's `ringGap` (pixels, default 6) is the space between the thumbnails, between them and the video, and between the ring and the player's edges. An area FrameTrail does not know (one of a later version) is kept as it is when the hypervideo is saved. A content view is told apart by `type`: `TimedContent` (a collection of annotations, filtered by `collectionFilter`), `CustomHTML`, `Transcript` (built from the subtitles of `transcriptSource`; empty, or a language without subtitles, means the first subtitles), `Timelines` and `Chapters`. A transcript view is stored as a transcript; only an export that has to stand alone may turn it into `CustomHTML`.
 - **`chapters`** — `{ start, title }`, ordered by `start`. A chapter has no other identity than its `start`, which is unique within the hypervideo.
 - **`subtitles`** — one WebVTT file per language in the `subtitles/` folder next to the file, named `<srclang>.vtt`. The editor shows them as transcripts (the Transcripts edit mode), in Transcript views and as captions; cue times are on the video's timeline (a clip with an in point starts later than 0). It keeps what it does not change in a file (header, NOTE, STYLE and REGION blocks, cue ids and settings, line endings) and writes cues in the order of their start. A speaker is a voice tag at the start of a cue (`<v Ada>Hello`); `config.captionsVisible` turns captions on from the start.
-- **`globalEvents`** and **`customCSS`** — JavaScript run on player events and CSS for this hypervideo. Event code is the body of a function called with `FrameTrail` (the instance) and `hypervideo` (its HypervideoController).
+- **`globalEvents`** — JavaScript run on player events, edited in the hypervideo settings (Advanced Options). Event code is the body of a function called with `FrameTrail` (the instance) and `hypervideo` (its HypervideoController).
+- **`customCSS`** — deprecated: CSS for this hypervideo. It is still applied while the hypervideo is shown, but FrameTrail no longer edits it; CSS belongs in the instance's `custom.css`.
 
 ### `annotations/_index.json` and `annotations/<userId>.json`
 
@@ -314,15 +348,18 @@ Overlays and code snippets (in `hypervideo.json` → `contents`) and annotations
         "frametrail:resourceId": null,
         "frametrail:attributes": { "text": "&lt;p&gt;Hello&lt;/p&gt;", "animation": { "in": { "preset": "fadeIn" } } }
     },
-    "frametrail:events": { "onStart": "FrameTrail.module('HypervideoController').pause();" }
+    "frametrail:events": { "onClick": "console.log('clicked');" },
+    "frametrail:pause": true
 }
 ```
 
 | `frametrail:type` | Lives in | Target selector | Notes |
 |-------------------|----------|-----------------|-------|
-| `Overlay` | `hypervideo.json` → `contents` | time span and box | shown over the video; may move (keyframes) and rotate; `frametrail:events` |
-| `CodeSnippet` | `hypervideo.json` → `contents` | a point in time `t=<start>` | body is `TextualBody`, `frametrail:type` `codesnippet`, `format` `text/javascript`, the code in `value` |
-| `Annotation` | `annotations/<userId>.json` | time span | shown in timelines and content views; `frametrail:uri`, `frametrail:graphdata` |
+| `Overlay` | `hypervideo.json` → `contents` | time span and box | shown over the video; may move (keyframes) and rotate; `frametrail:events`, `frametrail:pause` |
+| `CodeSnippet` | `hypervideo.json` → `contents` | a point in time `t=<start>` | body is `TextualBody`, `frametrail:type` `codesnippet`, `format` `text/javascript`, the code in `value`; FrameTrail has no editor for them, they run when written into the file |
+| `Annotation` | `annotations/<userId>.json` | time span | shown in timelines and content views; `frametrail:uri`, `frametrail:graphdata`, `frametrail:pause` |
+
+`frametrail:pause: true` (overlays and annotations) pauses the video at the item's start: when playback crosses it, or starts at it (an item at 0:00, "Play from here"); seeking into the middle of its time span does not. An annotation pauses only while it is shown: in an open content view of the player, or in the phone area while phones are paired. Items made in the editor get their type's default — `true` for quizzes and the plain hotspot, `false` otherwise; a missing `frametrail:pause` is `false`.
 
 ### Resource types
 
@@ -349,9 +386,11 @@ The body's `frametrail:type` is the resource type. It decides how the item is re
 
 `body.type` and `body.format` are derived from `frametrail:type` for other W3C consumers; FrameTrail never reads them, and older files omit them for some types. The resource's `src` goes into `body.source` or `body.value` as the last column says; overlays read whichever is present. Items made from a resource repeat its name, thumbnail, licence and attributes in `frametrail:name`, `frametrail:thumb`, `frametrail:licenseType`, `frametrail:licenseAttribution` and `frametrail:attributes`.
 
+Location items are made in the editor, like text, HTML and quiz items, and carry no `frametrail:resourceId`; their place is chosen in their properties. The editor no longer makes location resources, except from a pasted OpenStreetMap link. A resources index may still hold location resources from earlier versions, and items made from them work as before.
+
 The text of `text` and `html` items (`attributes.text`) is stored HTML-escaped (`&lt;p&gt;…`) and unescaped before rendering.
 
-Every overlay type also takes `opacity`, `hoverStyle`, `zIndex` and `animation` in its attributes; hotspots take an action (`action`, `actionTarget`, `actionTargetTime`). They are listed in each attribute schema. [TYPES.md](TYPES.md) has every type's attributes with their values and defaults, and what each type is for.
+Every overlay type also takes `opacity`, `hoverStyle`, `zIndex` and `animation` in its attributes; hotspots take an action (`action`, `actionTarget`, `actionTargetTime`), and so do a quiz's answers and its `onAnswered` (with the quiz's own actions `""` continue and `pause` beside them). They are listed in each attribute schema. [TYPES.md](TYPES.md) has every type's attributes with their values and defaults, and what each type is for.
 
 ## Time and Space
 
@@ -377,6 +416,8 @@ t=12.5,20&xywh=percent:18,22,47,40
 ```
 
 `xywh=percent:<left>,<top>,<width>,<height>`, in percent of the video frame. FrameTrail only writes and reads the `percent:` form. Values may be fractional.
+
+A text overlay with `attributes.autoSize: "height"` has a box as high as its content: the editor writes the height whenever the content or the width changes, so the stored box is what the author saw. Text is laid out on a stage 800 px wide, whatever the player's size, so the height that fits depends only on the content, the width and the video's aspect ratio. When shown, the content of such an overlay is never clipped, in case other fonts make it longer.
 
 ### Box motion (keyframes) and rotation
 
@@ -416,11 +457,12 @@ Timestamps are not all in the same unit:
 | Where | Unit |
 |-------|------|
 | items' `created` | ISO 8601 (older: `toString()` text) |
-| `hypervideo.json` → `meta.created`, `meta.lastchanged` | milliseconds since 1970 |
-| `config.json` → `lastchanged`, `overviewMap.lastchanged` | milliseconds since 1970 |
-| `resources/_index.json` → `created` | seconds since 1970 |
-| `annotations/_index.json` → `created` | seconds since 1970 |
-| `annotations/_index.json` → `lastchanged` | milliseconds since 1970 (seconds in older files) |
+| `hypervideo.json` → `meta.created`, `meta.lastchanged` | Unix timestamp in milliseconds |
+| `config.json` → `lastchanged` | Unix timestamp in milliseconds |
+| `hypervideos/_index.json` → `overviewMap.lastchanged` | Unix timestamp in milliseconds |
+| `resources/_index.json` → `created` | Unix timestamp in seconds |
+| `annotations/_index.json` → `created` | Unix timestamp in seconds |
+| `annotations/_index.json` → `lastchanged` | Unix timestamp in milliseconds (seconds in older files) |
 
 ## Unknown Properties
 
@@ -451,17 +493,22 @@ Readers must accept these shapes. Each is in the schemas as a separate alternati
 | Shape | Where | Read as |
 |-------|-------|---------|
 | `created` as `Date.prototype.toString()` text | items | the same instant, without milliseconds |
-| `[]` instead of `{}` | `frametrail:attributes`, `frametrail:events`, `globalEvents`, animation `params`, an extension's `settings` in `config.json`, and the maps in the index files and `tagdefinitions.json` | an empty object — PHP cannot tell the two apart when it re-encodes a file |
+| `[]` instead of `{}` | `frametrail:attributes`, `frametrail:events`, `globalEvents`, animation `params`, a resource's `attributes`, an extension's `settings` in `config.json`, and the maps in the index files and `tagdefinitions.json` | an empty object — older versions of the PHP backend wrote it, because they decoded files to PHP arrays, which cannot tell the two apart. FrameTrail now writes `{}`, and keeps a `[]` it finds where nothing changes |
 | body `frametrail:type` `"button"` | overlays | no Resource type exists; FrameTrail does not render the item and keeps it |
 | user entries at the top level of `annotations/_index.json` (`{ name, description, hidden, src }`), next to or instead of `annotationfiles` | local-folder mode | an annotation file of that user; moved under `annotationfiles` when that user next saves |
 | `annotation-increment` | `hypervideo.json`, `annotations/_index.json` | not used |
 | `frametrail:attributes` at the item level instead of the body | very old overlays | the body's attributes, when the body has none |
 | `frametrail:lat`, `frametrail:long`, `frametrail:boundingBox` on the body | location annotations | `attributes.lat`, `.lon`, `.boundingBox` |
+| `tileStyle` `carto-light`, `carto-dark`, `carto-voyager` | location attributes | the styles `light`, `dark`, `soft` (CARTO's tiles need an API key since September 2026); kept as stored until the style is changed in the editor |
 | `animationIn`, `animationOut`, `animationDuration` | overlay attributes | `attributes.animation` |
 | `linkUrl` | hotspot attributes | `action: "openUrl"` with that target, when `action` is empty |
+| `onCorrectAnswer`, `onWrongAnswer` (`showText`, `resumePlayback`, `jumpForward`, `jumpBackward`), and `onAnswered` with `showText` / `resumePlayback` | quiz attributes, when no answer and no `onAnswered` has an `action` | actions: the correct or wrong outcome for the decided answer, a jump as `jumpToTime` from where the quiz was answered, `resumePlayback: false` as `pause`, `showText` as `feedback`. The quiz editor converts them on its first change (jumps from the quiz's start; a multiSelect quiz keeps its correct outcome as `onAnswered`) |
+| an `onStart` that only pauses (`FrameTrail.module('HypervideoController').pause();`, or `hypervideo.pause();`) | overlays without `frametrail:pause` (quiz and hotspot overlays made before it) | `frametrail:pause: true`; the call is not run. Kept as stored until the item's pause is switched in the editor, which writes `frametrail:pause` and removes the call |
+| a label and description per language code (`{ "en": { "label": … }, "de": { … } }`) | tags in `tagdefinitions.json` | the label in the interface language, else the English one, else the first; written as `{ label, description }` the first time the tag is edited |
 | `overviewMap` (markers as a list of `{ hypervideoID, x, y, size }`) | `config.json` | the overview map, when `hypervideos/_index.json` has none; moved there by the first map save |
-| `theme` | `config.json` | `defaultTheme` |
+| `defaultTheme` | `config.json`, a project bundle's `config`, init options, `data-frametrail-config` | `theme`, when that is empty |
 | `allowCollaboration`, `defaultUserRole`, `updateServiceURL`, `autoUpdate` | `config.json` | not used |
+| `theme` | `hypervideo.json` → `config` | not used: a hypervideo has no theme of its own, the instance's `theme` applies. Kept in the file as it is |
 | `hidden` | `hypervideo.json` → `config` | not used |
 | `start`, `end` | clips | not used |
 | `embed` | `urlpreview` attributes | not used |
@@ -486,4 +533,4 @@ The schemas use these keywords and nothing else:
 | `pattern` | A regular expression the string must contain a match for; the schemas anchor theirs with `^…$`. Only syntax that ECMA-262 and PCRE read alike: literals, `\.`, character classes, groups, alternation, `?`, `*`, `+`, `{n,m}`. |
 | `oneOf` | Exactly one alternative matches. Where every alternative is an object that fixes the same property with `const` — `frametrail:type`, a content view's `type`, a bundle's `bundle` — a validator can pick the alternative by that property and report only its errors. The other `oneOf`s set an object against PHP's empty array, or tell legacy forms apart by type or pattern. |
 
-A validator that implements these keywords checks the schemas completely; a full JSON Schema 2020-12 validator gives the same results. `FrameTrailSchema` implements exactly these and refuses any other keyword, so a schema that needs more fails the tests. Decode JSON so that `{}` and `[]` stay different (in PHP: `json_decode($json)` without `true`, or an equivalent); otherwise an empty object cannot be told from an empty array.
+A validator that implements these keywords checks the schemas completely; a full JSON Schema 2020-12 validator gives the same results. `FrameTrailSchema` implements exactly these and refuses any other keyword, so a schema that needs more fails the tests. Decode JSON so that `{}` and `[]` stay different (in PHP: `json_decode($json)` without `true`, or an equivalent); otherwise an empty object cannot be told from an empty array, and a file written back turns every `{}` into `[]`. FrameTrail's PHP backend decodes this way wherever it writes a file back.

@@ -104,8 +104,10 @@
     // Body types whose body may carry a media fragment of the embedded media.
     var MEDIA_SELECTOR_TYPES = ['video', 'vimeo', 'youtube'];
 
-    // The playback-relevant keys of config.json, the only ones a project bundle carries.
-    var PLAYBACK_CONFIG_KEYS = ['defaultTheme', 'defaultLanguage', 'videoFit', 'overviewMode', 'overviewTitle', 'overviewShowSearchBar'];
+    // The playback-relevant keys of config.json, the only ones a project bundle carries: how its pages play,
+    // and how they pair with phones (so a project file can do that too, docs/PAIRING.md).
+    var PLAYBACK_CONFIG_KEYS = ['theme', 'defaultLanguage', 'videoFit', 'overviewMode', 'overviewTitle', 'overviewShowSearchBar',
+                                'pairingBrokerURL', 'pairingButtonVisible', 'pairingCompanionURL'];
 
     // Keys of annotations/_index.json that are not legacy per-user entries.
     var ANNOTATION_INDEX_KEYS = ['mainAnnotation', 'annotation-increment', 'annotationfiles'];
@@ -128,7 +130,8 @@
         return (value === undefined) ? undefined : JSON.parse(JSON.stringify(value));
     }
 
-    // PHP writes an empty object as [], so read [] as {} where an object is meant.
+    // Older versions of the PHP backend wrote an empty object as []: read [] as
+    // {} where an object is meant, and write {} for a model that still holds [].
     function objectOrEmpty(value) {
         return (Array.isArray(value) && value.length === 0) ? {} : value;
     }
@@ -369,6 +372,68 @@
 
 
     /* ------------------------------------------------------------------ */
+    /*  Pause at start                                                    */
+    /* ------------------------------------------------------------------ */
+
+    // frametrail:pause as it is stored: a boolean, or nothing.
+    function pauseOf(value) {
+        return (typeof value === 'boolean') ? value : undefined;
+    }
+
+    // What the editor gave quiz and hotspot overlays before frametrail:pause existed,
+    // and the action preset that pauses (spaces, quotes and the semicolon aside).
+    var PAUSE_SNIPPETS = ["FrameTrail.module('HypervideoController').pause()", "hypervideo.pause()"];
+
+    /**
+     * I say whether an onStart event is only a call that pauses the video:
+     * the legacy form of frametrail:pause.
+     * @method isPauseSnippet
+     * @param {String} code
+     * @return {Boolean}
+     */
+    function isPauseSnippet(code) {
+        if (typeof code !== 'string') { return false; }
+        var plain = code.replace(/\s+/g, '').replace(/"/g, "'").replace(/;+$/, '');
+        return PAUSE_SNIPPETS.indexOf(plain) >= 0;
+    }
+
+    /**
+     * I say whether an item (an overlay or an annotation of the model) pauses
+     * the video at its start: its pause, or, while it has none, an onStart that
+     * is only a pause call (isPauseSnippet).
+     * @method pausesAtStart
+     * @param {Object} item
+     * @return {Boolean}
+     */
+    function pausesAtStart(item) {
+        if (!isObject(item)) { return false; }
+        if (typeof item.pause === 'boolean') { return item.pause; }
+        return isObject(item.events) && isPauseSnippet(item.events.onStart);
+    }
+
+
+    /**
+     * I return the objects of an item's attributes that carry the action model (action,
+     * actionTarget, actionTargetTime): the attributes themselves (hotspots), each answer of a
+     * quiz, and a quiz's onAnswered. Checks and imports look at the targets in all of them.
+     * @method actionHolders
+     * @param {Object} attributes
+     * @return {Array}
+     */
+    function actionHolders(attributes) {
+        if (!isObject(attributes)) { return []; }
+        var holders = [attributes];
+        if (Array.isArray(attributes.answers)) {
+            attributes.answers.forEach(function(answer) { if (isObject(answer)) { holders.push(answer); } });
+        }
+        if (isObject(attributes.onAnswered)) {
+            holders.push(attributes.onAnswered);
+        }
+        return holders;
+    }
+
+
+    /* ------------------------------------------------------------------ */
     /*  Overlays                                                          */
     /* ------------------------------------------------------------------ */
 
@@ -407,6 +472,7 @@
             "keyframes":          Keyframes.normalizeKeyframes(selector['frametrail:keyframes']),
             "rotation":           rotationOf(selector['frametrail:rotation']),
             "events":             objectOrEmpty(data['frametrail:events']),
+            "pause":              pauseOf(data['frametrail:pause']),
             "tags":               data['frametrail:tags'],
             "resourceId":         body['frametrail:resourceId']
         };
@@ -484,7 +550,7 @@
 
     function overlayAttributes(overlay) {
 
-        if (overlay.type !== 'location' || !isObject(overlay.attributes)) { return overlay.attributes; }
+        if (overlay.type !== 'location' || !isObject(overlay.attributes)) { return objectOrEmpty(overlay.attributes); }
 
         var attributes = Object.assign({}, overlay.attributes);
         attributes.lat         = parseFloat(overlay.attributes.lat);
@@ -524,7 +590,8 @@
                 "frametrail:resourceId":         overlay.resourceId,
                 "frametrail:attributes":         overlayAttributes(overlay)
             },
-            "frametrail:events": overlay.events
+            "frametrail:events": objectOrEmpty(overlay.events),
+            "frametrail:pause":  pauseOf(overlay.pause)
         };
 
     }
@@ -603,7 +670,7 @@
                 "frametrail:name":       snippet.name,
                 "frametrail:thumb":      null,
                 "frametrail:resourceId": null,
-                "frametrail:attributes": snippet.attributes
+                "frametrail:attributes": objectOrEmpty(snippet.attributes)
             }
         };
     }
@@ -669,6 +736,7 @@
             "resourceId":         body["frametrail:resourceId"],
             "attributes":         objectOrEmpty(body['frametrail:attributes']) || {},
             "tags":               data['frametrail:tags'],
+            "pause":              pauseOf(data['frametrail:pause']),
             "source":             source,
             "graphData":          data['frametrail:graphdata']     || null,
             "graphDataType":      data['frametrail:graphdatatype'] || null
@@ -704,6 +772,7 @@
             "type":     "Annotation",
             "frametrail:type": "Annotation",
             "frametrail:tags": annotation.tags || [],
+            "frametrail:pause": pauseOf(annotation.pause),
             "frametrail:uri":  annotation.uri || null,
             "frametrail:graphdata":     (annotation.graphData != null)     ? annotation.graphData     : undefined,
             "frametrail:graphdatatype": (annotation.graphDataType != null) ? annotation.graphDataType : undefined,
@@ -728,7 +797,7 @@
                 "frametrail:licenseAttribution": annotation.licenseAttribution,
                 "selector":                      mediaSelector(annotation),
                 "frametrail:resourceId":         annotation.resourceId,
-                "frametrail:attributes":         annotation.attributes
+                "frametrail:attributes":         objectOrEmpty(annotation.attributes)
             }
         };
 
@@ -866,6 +935,118 @@
         hash = ('0000000' + hash.toString(16)).slice(-8);
 
         return 'guest_' + (readable ? readable + '-' : '') + hash;
+
+    }
+
+
+    /* ------------------------------------------------------------------ */
+    /*  Tags                                                              */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * I return what an entry of tagdefinitions.json says: { label,
+     * description }. An entry has one label; a legacy entry has one per
+     * language code, of which I take the one in language, else the English
+     * one, else the first. Without an entry, or with no label in it, the label
+     * is the tag's id, so an item naming a tag nobody defines shows what it
+     * names.
+     *
+     * @method tagEntry
+     * @param {Object} entry      a value of tagdefinitions.json, or undefined
+     * @param {String} id         the tag's id (its key there)
+     * @param {String} [language] the interface language
+     * @return {Object} { label, description }
+     */
+    function tagEntry(entry, id, language) {
+
+        var text = function(from) {
+            return { label: from.label, description: (typeof from.description === 'string') ? from.description : '' };
+        };
+
+        if (!isObject(entry)) { return { label: String(id), description: '' }; }
+
+        if (typeof entry.label === 'string') { return text(entry); }
+
+        var codes = Object.keys(entry).filter(function(code) {
+                return isObject(entry[code]) && typeof entry[code].label === 'string';
+            }),
+            code  = (codes.indexOf(language) >= 0) ? language : ((codes.indexOf('en') >= 0) ? 'en' : codes[0]);
+
+        return (code === undefined) ? { label: String(id), description: '' } : text(entry[code]);
+
+    }
+
+    /**
+     * I return what tells tag labels apart: two labels with the same key name
+     * the same tag ("Fact check" and " fact  Check"), so a new tag cannot take
+     * an existing one's label. Accents count ("Café" is not "Cafe").
+     *
+     * @method tagLabelKey
+     * @param {String} label
+     * @return {String}
+     */
+    function tagLabelKey(label) {
+        return String(label).trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    /**
+     * I make the id of a new tag from its label. Annotation thumbnails carry
+     * tag ids as class names, so the id is a readable [a-z0-9-] form of the
+     * label that starts with a letter ("Fact Check" → "fact-check", "Größe" →
+     * "grosse"), with
+     * "tag-" in front where the label gives too little ("2024" → "tag-2024",
+     * a non-Latin label → "tag"), and "-2", "-3", … when it is taken.
+     *
+     * @method tagID
+     * @param {String} label
+     * @param {Array|Object} [existing] ids in use: a list, or the definitions
+     * @return {String}
+     */
+    function tagID(label, existing) {
+
+        var taken = Object.create(null),
+            ids   = Array.isArray(existing) ? existing : Object.keys(isObject(existing) ? existing : {});
+
+        ids.forEach(function(id) { taken[String(id)] = true; });
+
+        var base = String(label).normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/ß/g, 'ss')
+                       .replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').substring(0, 40).replace(/-+$/, '');
+
+        if (base.length < 2 || !/^[a-z]/.test(base)) { base = ('tag-' + base).replace(/-+$/, ''); }
+
+        var id = base, n = 2;
+        while (taken[id]) { id = base + '-' + (n++); }
+
+        return id;
+
+    }
+
+    /**
+     * I return the ids of the tags the items of a hypervideo bundle name: its
+     * overlays and code snippets and every annotation file's annotations.
+     *
+     * @method usedTagIds
+     * @param {Object} bundle a hypervideo bundle
+     * @return {Array} ids, in the order first named
+     */
+    function usedTagIds(bundle) {
+
+        var used  = [],
+            hv    = bundle.hypervideo || {},
+            items = Array.isArray(hv.contents) ? hv.contents.slice() : [],
+            files = (bundle.annotations && isObject(bundle.annotations.files)) ? bundle.annotations.files : {};
+
+        Object.keys(files).forEach(function(fileId) {
+            if (Array.isArray(files[fileId])) { items = items.concat(files[fileId]); }
+        });
+
+        items.forEach(function(item) {
+            (isObject(item) && Array.isArray(item['frametrail:tags']) ? item['frametrail:tags'] : []).forEach(function(tag) {
+                if (typeof tag === 'string' && used.indexOf(tag) < 0) { used.push(tag); }
+            });
+        });
+
+        return used;
 
     }
 
@@ -1032,11 +1213,10 @@
                 "autohideControls": config.autohideControls,
                 "captionsVisible":  config.captionsVisible,
                 "clipTimeVisible":  config.clipTimeVisible,
-                "theme":            config.theme || "",
                 "layoutArea":       layout
             }, config, ['layoutArea']),
             "clips":        model.clips,
-            "globalEvents": model.globalEvents || {},
+            "globalEvents": objectOrEmpty(model.globalEvents) || {},
             "customCSS":    model.customCSS || "",
             "contents":     CONTENTS_SLOT,
             "chapters":     model.chapters || [],
@@ -1088,6 +1268,39 @@
             .concat((model.otherContents || []).map(clone));
 
         return out;
+
+    }
+
+
+    /* ------------------------------------------------------------------ */
+    /*  Configuration                                                     */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * I bring a config into its current form, in place, and return it: the
+     * contents of config.json, init options, or the playback settings of a
+     * bundle or a page (data-frametrail-config). defaultTheme, the former
+     * name of theme, becomes theme when that is empty, and is dropped.
+     * Anything that is no object is returned as it is.
+     *
+     * Every way a config comes in goes through me, each source on its own
+     * before they are merged, so that an override in the former form still
+     * overrides.
+     *
+     * @method normalizeConfig
+     * @param {Object} config
+     * @return {Object}
+     */
+    function normalizeConfig(config) {
+
+        if (!isObject(config)) { return config; }
+
+        if (has(config, 'defaultTheme')) {
+            if (!config.theme && config.defaultTheme) { config.theme = config.defaultTheme; }
+            delete config.defaultTheme;
+        }
+
+        return config;
 
     }
 
@@ -1272,6 +1485,15 @@
                     if (has(all, resourceId)) { bundle.resources[resourceId] = all[resourceId]; }
                 });
             }
+            // The definitions of the tags its items name, so their labels travel with it.
+            var definitions = folderFile(files, 'tagdefinitions.json');
+            if (isObject(definitions)) {
+                usedTagIds(bundle).forEach(function(tag) {
+                    if (!has(definitions, tag)) { return; }
+                    bundle.tagdefinitions = bundle.tagdefinitions || {};
+                    bundle.tagdefinitions[tag] = definitions[tag];
+                });
+            }
         }
 
         (Array.isArray(hypervideo.subtitles) ? hypervideo.subtitles : []).forEach(function(entry) {
@@ -1340,6 +1562,8 @@
             if (resources !== undefined)      { bundle.resources = resources; }
             if (tagdefinitions !== undefined) { bundle.tagdefinitions = tagdefinitions; }
             if (isObject(config)) {
+                // A config.json in the former form keeps its theme in the bundle.
+                config = normalizeConfig(clone(config));
                 bundle.config = {};
                 PLAYBACK_CONFIG_KEYS.forEach(function(key) {
                     if (has(config, key)) { bundle.config[key] = config[key]; }
@@ -1387,6 +1611,7 @@
                         "resources":           clone(bundle.resources)
                     };
                 }
+                if (isObject(bundle.tagdefinitions)) { files['tagdefinitions.json'] = clone(bundle.tagdefinitions); }
 
             } else {
                 throw new Error('Not a bundle: ' + bundle.bundle);
@@ -1397,6 +1622,326 @@
         }
 
     });
+
+
+    /* ------------------------------------------------------------------ */
+    /*  Folders for export                                                */
+    /* ------------------------------------------------------------------ */
+
+    // Resource types whose src is a file in resources/ when it is not a URL.
+    var FILE_TYPES = ['image', 'video', 'audio', 'pdf'];
+
+    // A path relative to resources/: not a URL, not absolute, not empty.
+    function isRelativePath(value) {
+        return typeof value === 'string' && value !== '' && !/^([a-z][a-z0-9+.-]*:|\/)/i.test(value);
+    }
+
+    // The annotation folders of a folder map: [{ dir, index, entries }], one
+    // per hypervideo that has annotation files. The entries are those of the
+    // index (parseAnnotationIndex); without an index (a hypervideo bundle
+    // made in memory), every file there, with no fields.
+    function annotationDirs(files) {
+        var dirs = {};
+        Object.keys(files).forEach(function(path) {
+            var match = /^(hypervideos\/.+\/annotations\/)([^\/]+)\.json$/.exec(path);
+            if (!match) { return; }
+            var dir = dirs[match[1]] || (dirs[match[1]] = { dir: match[1], files: [] });
+            if (match[2] !== '_index') { dir.files.push(match[2]); }
+        });
+        return Object.keys(dirs).map(function(dir) {
+            var index   = folderFile(files, dir + '_index.json'),
+                entries = {};
+            if (index !== undefined) {
+                entries = parseAnnotationIndex(index).annotationfiles;
+            } else {
+                dirs[dir].files.forEach(function(fileID) { entries[fileID] = {}; });
+            }
+            return { dir: dir, index: index, entries: entries };
+        });
+    }
+
+    function itemsOf(content) {
+        if (Array.isArray(content)) { return content; }
+        return isObject(content) ? Object.keys(content).map(function(key) { return content[key]; }) : [];
+    }
+
+    /**
+     * I cut the folder map of a project down to some of its hypervideos: the
+     * hypervideos index and the overview map's markers list only those, and
+     * the files of the others are left out. The resource library stays as it
+     * is (see withoutLibrary). The map given is not changed.
+     *
+     * @method selectFolder
+     * @param {Object} files  a project's folder map
+     * @param {Array} [ids]  the hypervideos to keep; default all
+     * @return {Object} a new folder map
+     */
+    function selectFolder(files, ids) {
+
+        var index = folderFile(files, 'hypervideos/_index.json');
+
+        if (!isObject(index)) { throw new Error('Missing hypervideos/_index.json'); }
+
+        var all    = isObject(index.hypervideos) ? Object.keys(index.hypervideos) : [],
+            keep   = ids ? all.filter(function(id) { return ids.map(String).indexOf(id) >= 0; }) : all,
+            result = {};
+
+        var dropped = all.filter(function(id) { return keep.indexOf(id) < 0; }).map(function(id) { return folderDir(index, id); });
+
+        Object.keys(files).forEach(function(path) {
+            if (dropped.some(function(dir) { return path.indexOf(dir) === 0; })) { return; }
+            result[path] = files[path];
+        });
+
+        var folders = index.hypervideos;
+        index.hypervideos = {};
+        keep.forEach(function(id) { index.hypervideos[id] = folders[id]; });
+        if (isObject(index.overviewMap) && isObject(index.overviewMap.markers)) {
+            Object.keys(index.overviewMap.markers).forEach(function(id) {
+                if (keep.indexOf(id) < 0) { delete index.overviewMap.markers[id]; }
+            });
+        }
+        result['hypervideos/_index.json'] = index;
+
+        return result;
+
+    }
+
+    /**
+     * I take the resource library out of a folder map: resources/_index.json
+     * lists nothing (its increment stays, so later ids do not repeat old
+     * ones). Hypervideos play without it: their clips and items keep their
+     * own copy of what they show. What pointed back at the library goes: a
+     * clip that names its video only by its resource gets the resource's src,
+     * clips and items lose their resourceId. The map given is not changed.
+     *
+     * @method withoutLibrary
+     * @param {Object} files  a folder map
+     * @return {Object} a new folder map
+     */
+    function withoutLibrary(files) {
+
+        var resources = folderFile(files, 'resources/_index.json'),
+            library   = (isObject(resources) && isObject(resources.resources)) ? resources.resources : {},
+            result    = {};
+
+        Object.keys(files).forEach(function(path) { result[path] = files[path]; });
+
+        function unlink(item) {
+            if (isObject(item) && isObject(item.body) && has(item.body, 'frametrail:resourceId')) {
+                delete item.body['frametrail:resourceId'];
+            }
+        }
+
+        if (resources !== undefined) {
+            result['resources/_index.json'] = Object.assign(isObject(resources) ? resources : {}, { "resources": {} });
+        }
+
+        Object.keys(files).forEach(function(path) {
+            if (/^hypervideos\/.+\/hypervideo\.json$/.test(path)) {
+                var hypervideo = folderFile(files, path);
+                if (!isObject(hypervideo)) { return; }
+                (Array.isArray(hypervideo.clips) ? hypervideo.clips : []).forEach(function(clip) {
+                    if (!isObject(clip) || clip.resourceId == null || clip.resourceId === '') { return; }
+                    var resource = library[String(clip.resourceId)];
+                    if (!(typeof clip.src === 'string' && clip.src.length > 3) && isObject(resource) && resource.src) { clip.src = resource.src; }
+                    clip.resourceId = null;
+                });
+                (Array.isArray(hypervideo.contents) ? hypervideo.contents : []).forEach(unlink);
+                result[path] = hypervideo;
+            } else if (/^hypervideos\/.+\/annotations\/[^\/]+\.json$/.test(path) && !/\/_index\.json$/.test(path)) {
+                var content = folderFile(files, path);
+                itemsOf(content).forEach(unlink);
+                result[path] = content;
+            }
+        });
+
+        return result;
+
+    }
+
+    /**
+     * I list the media files a folder map refers to: the paths relative to
+     * resources/ in the resource library (src of files, thumbnails), the
+     * overview map's background, the hypervideos' thumbnails and clips, and
+     * the items of the hypervideos and annotation files (src of files,
+     * thumbnails, the video they are on). URLs are not files; paths that
+     * leave resources/ are left out.
+     *
+     * @method mediaPaths
+     * @param {Object} files  a folder map
+     * @return {Array} the paths, sorted
+     */
+    function mediaPaths(files) {
+
+        var paths = [];
+
+        function add(value) {
+            if (!isRelativePath(value) || value.indexOf('\\') >= 0 || value.split('/').indexOf('..') >= 0) { return; }
+            if (paths.indexOf(value) < 0) { paths.push(value); }
+        }
+
+        function addItem(item) {
+            if (!isObject(item)) { return; }
+            var body = item.body;
+            if (isObject(body)) {
+                if (FILE_TYPES.indexOf(body['frametrail:type']) >= 0) { add(body[RESOURCE_TYPES[body['frametrail:type']].src]); }
+                add(body['frametrail:thumb']);
+            }
+            if (isObject(item.target)) { add(item.target.source); }
+        }
+
+        var hypervideosIndex = folderFile(files, 'hypervideos/_index.json'),
+            resources        = folderFile(files, 'resources/_index.json');
+
+        if (isObject(hypervideosIndex) && isObject(hypervideosIndex.overviewMap)) { add(hypervideosIndex.overviewMap.background); }
+
+        if (isObject(resources) && isObject(resources.resources)) {
+            Object.keys(resources.resources).forEach(function(id) {
+                var resource = resources.resources[id];
+                if (!isObject(resource)) { return; }
+                if (FILE_TYPES.indexOf(resource.type) >= 0) { add(resource.src); }
+                add(resource.thumb);
+            });
+        }
+
+        Object.keys(files).forEach(function(path) {
+            if (/^hypervideos\/.+\/hypervideo\.json$/.test(path)) {
+                var hypervideo = folderFile(files, path);
+                if (!isObject(hypervideo)) { return; }
+                if (isObject(hypervideo.meta)) { add(hypervideo.meta.thumb); }
+                (Array.isArray(hypervideo.clips) ? hypervideo.clips : []).forEach(function(clip) { if (isObject(clip)) { add(clip.src); } });
+                (Array.isArray(hypervideo.contents) ? hypervideo.contents : []).forEach(addItem);
+            } else if (/^hypervideos\/.+\/annotations\/[^\/]+\.json$/.test(path) && !/\/_index\.json$/.test(path)) {
+                itemsOf(folderFile(files, path)).forEach(addItem);
+            }
+        });
+
+        return paths.sort();
+
+    }
+
+    /**
+     * I give annotations made with accounts to their authors' names, so
+     * they can be edited where people have no accounts (a local folder, a
+     * project file, a page in memory): there, an annotation belongs to the
+     * guest whose guestUserID(name) is its creator's id. Every user id that
+     * is not a guest's becomes the guest id of the user's name, in the
+     * creator of the items, in the names of the annotation files and in
+     * their index entries (ownerId, owner, mainAnnotation). Files that end up
+     * with the same id (two accounts with the same name) are merged.
+     *
+     * The name of a user is options.names[id], else the owner (or name) of
+     * the user's index entry, else the nickname the user's items carry; a
+     * user without any keeps their id. The map given is not changed.
+     *
+     * @method localAuthors
+     * @param {Object} files  a folder map
+     * @param {Object} [options] { names: { userId: name } }
+     * @return {Object} { files: a new folder map, ids: { old id: new id } }
+     */
+    function localAuthors(files, options) {
+
+        var names  = (options && isObject(options.names)) ? options.names : {},
+            found  = {},
+            ids    = {},
+            result = {},
+            dirs   = annotationDirs(files);
+
+        function isAccount(id) {
+            return id != null && id !== '' && String(id).indexOf('guest_') !== 0;
+        }
+
+        function note(id, name) {
+            id = String(id);
+            if (isAccount(id) && typeof name === 'string' && name.trim() !== '' && !has(found, id)) { found[id] = name; }
+        }
+
+        // The names: given, then the index entries, then the items.
+        Object.keys(names).forEach(function(id) { note(id, names[id]); });
+        dirs.forEach(function(entry) {
+            Object.keys(entry.entries).forEach(function(fileID) {
+                var fields = entry.entries[fileID] || {};
+                note(fileID, fields.owner || fields.name);
+            });
+        });
+        dirs.forEach(function(entry) {
+            Object.keys(entry.entries).forEach(function(fileID) {
+                itemsOf(folderFile(files, entry.dir + fileID + '.json')).forEach(function(item) {
+                    if (isObject(item) && isObject(item.creator)) { note(item.creator.id, item.creator.nickname); }
+                });
+            });
+        });
+
+        Object.keys(found).forEach(function(id) { ids[id] = guestUserID(found[id]); });
+
+        Object.keys(files).forEach(function(path) { result[path] = files[path]; });
+
+        dirs.forEach(function(entry) {
+
+            var fileIDs = Object.keys(entry.entries);
+            if (!fileIDs.some(function(fileID) { return has(ids, fileID); })
+                    && !fileIDs.some(function(fileID) {
+                        return itemsOf(folderFile(files, entry.dir + fileID + '.json')).some(function(item) {
+                            return isObject(item) && isObject(item.creator) && has(ids, String(item.creator.id));
+                        });
+                    })) { return; }
+
+            var index    = isObject(entry.index) ? clone(entry.index) : {},
+                newFiles = {},
+                newIndex = {};
+
+            fileIDs.forEach(function(fileID) {
+
+                var path   = entry.dir + fileID + '.json',
+                    target = has(ids, fileID) ? ids[fileID] : fileID,
+                    items  = clone(itemsOf(folderFile(files, path)));
+
+                items.forEach(function(item) {
+                    if (isObject(item) && isObject(item.creator) && has(ids, String(item.creator.id))) {
+                        item.creator.id = ids[String(item.creator.id)];
+                    }
+                });
+
+                // A file the index lists but the folder lacks stays missing.
+                if (Object.prototype.hasOwnProperty.call(files, path)) {
+                    delete result[path];
+                    newFiles[target] = (newFiles[target] || []).concat(items);
+                }
+
+                var fields = clone(entry.entries[fileID]) || {};
+                if (target !== fileID) {
+                    fields.ownerId = target;
+                    fields.owner   = found[fileID];
+                }
+                if (!has(newIndex, target)) {
+                    newIndex[target] = fields;
+                } else {
+                    // Merged: the earliest creation, the latest change.
+                    var kept = newIndex[target];
+                    if (typeof fields.created === 'number' && !(kept.created <= fields.created)) { kept.created = fields.created; }
+                    if (typeof fields.lastchanged === 'number' && !(kept.lastchanged >= fields.lastchanged)) { kept.lastchanged = fields.lastchanged; }
+                }
+
+                // A legacy entry at the top level of the index is moved under annotationfiles.
+                if (ANNOTATION_INDEX_KEYS.indexOf(fileID) < 0 && isObject(index[fileID])) { delete index[fileID]; }
+
+            });
+
+            if (entry.index !== undefined) {
+                index.annotationfiles = newIndex;
+                if (index.mainAnnotation != null && has(ids, String(index.mainAnnotation))) {
+                    index.mainAnnotation = ids[String(index.mainAnnotation)];
+                }
+                result[entry.dir + '_index.json'] = index;
+            }
+            Object.keys(newFiles).forEach(function(fileID) { result[entry.dir + fileID + '.json'] = newFiles[fileID]; });
+
+        });
+
+        return { files: result, ids: ids };
+
+    }
 
 
     /* ------------------------------------------------------------------ */
@@ -1412,6 +1957,10 @@
         parseContents:           parseContents,
         transcriptsToHTML:       transcriptsToHTML,
 
+        isPauseSnippet:          isPauseSnippet,
+        pausesAtStart:           pausesAtStart,
+        actionHolders:           actionHolders,
+
         parseOverlay:            parseOverlay,
         serializeOverlay:        serializeOverlay,
         overlayTargetSelector:   overlayTargetSelector,
@@ -1425,14 +1974,25 @@
         parseAnnotationIndex:    parseAnnotationIndex,
         setAnnotationIndexEntry: setAnnotationIndexEntry,
         guestUserID:             guestUserID,
+        normalizeConfig:         normalizeConfig,
 
-        dedupeCreated:           dedupeCreated,
+        tagEntry:                tagEntry,
+        tagLabelKey:             tagLabelKey,
+        tagID:                   tagID,
+        usedTagIds:              usedTagIds,
+
+        dedupeCreated:          dedupeCreated,
         mergeStored:             mergeStored,
 
         schemaOfFile:            schemaOfFile,
         registerBundleFormat:    registerBundleFormat,
         readBundle:              readBundle,
-        writeBundle:             writeBundle
+        writeBundle:             writeBundle,
+
+        selectFolder:            selectFolder,
+        withoutLibrary:          withoutLibrary,
+        mediaPaths:              mediaPaths,
+        localAuthors:            localAuthors
 
     };
 

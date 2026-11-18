@@ -26,7 +26,6 @@
        "config": {
            "slidingMode": "adjust",
            "slidingTrigger": "key",
-           "theme": "",
            "autohideControls": false,
            "captionsVisible": false,
            "clipTimeVisible": false,

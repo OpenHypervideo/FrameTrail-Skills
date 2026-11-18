@@ -8,9 +8,9 @@ What each type of overlay, annotation and library resource is for, and what its 
 
 | Type | Overlay | Annotation | Library | What it is |
 |------|:-------:|:----------:|:-------:|------------|
-| `text` | ✓ | ✓ |  | Text overlay or annotation: rich text with an optional title and card style, for titles, captions, notes and explanations. |
+| `text` | ✓ | ✓ |  | Text overlay or annotation: rich text with an optional title, plain or in a shape (rectangle, rounded rectangle, circle, speech bubble, cloud, block arrow), for titles, captions, callouts and labels. |
 | `html` | ✓ | ✓ |  | Custom HTML overlay or annotation, for what the other types cannot show. |
-| `quiz` | ✓ | ✓ |  | Quiz overlay or annotation: a question with answers to choose (scored), or asking for a free text or a rating, to check understanding at a point in the video. |
+| `quiz` | ✓ | ✓ |  | Quiz overlay or annotation: a question with answers to choose, or asking for a free text or a rating, at a point in the video. |
 | `hotspot` | ✓ |  |  | Hotspot overlay: a clickable shape (circle, rectangle, rounded rectangle) that marks something in the picture and can open a URL or jump to a time or another hypervideo, or a drawn mark (arrow, underline, freeform outline) that points something out. |
 | `cursor` | ✓ |  |  | Cursor overlay: a mouse pointer with click ripples, for walking through a screen recording. |
 | `counter` | ✓ |  |  | Counter overlay: a number that counts up or rolls like an odometer, for a figure or statistic the video mentions. |
@@ -29,7 +29,7 @@ What each type of overlay, annotation and library resource is for, and what its 
 | `webpage` | ✓ | ✓ | ✓ | Web page shown in an iframe, or as a card when the site forbids embedding. |
 | `wikipedia` | ✓ | ✓ | ✓ | Wikipedia article summary, for background on a term, a person or an event. |
 | `entity` | ✓ | ✓ | ✓ | Linked data entity, such as a Wikidata item: a person, place or concept with its description. |
-| `location` | ✓ | ✓ | ✓ | Map (OpenStreetMap via Leaflet) centred on a coordinate, for a place the video shows or mentions. |
+| `location` | ✓ | ✓ | ✓ | Map (OpenStreetMap-based tiles via Leaflet) centred on a coordinate, for a place the video shows or mentions. |
 | `mastodon` | ✓ | ✓ | ✓ | Mastodon post. |
 | `codepen` | ✓ | ✓ | ✓ | CodePen embed: a live HTML, CSS and JavaScript demo. |
 | `figma` | ✓ | ✓ | ✓ | Figma embed: a design file or prototype. |
@@ -59,7 +59,7 @@ Every overlay type also takes these attributes; annotations do not use them.
 
 ### `text`
 
-Text overlay or annotation: rich text with an optional title and card style, for titles, captions, notes and explanations. Over a busy picture a card (box) keeps the text readable.
+Text overlay or annotation: rich text with an optional title, plain or in a shape (rectangle, rounded rectangle, circle, speech bubble, cloud, block arrow), for titles, captions, callouts and labels. Over a busy picture a filled shape keeps the text readable; a shape may also stand alone, without text.
 
 Overlay, annotation. Its src, if it has one, goes into `body.value`. Schema: [`attributes/text.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/attributes/text.schema.json).
 
@@ -67,14 +67,18 @@ Overlay, annotation. Its src, if it has one, goes into `body.value`. Schema: [`a
 |-----------|------|--------|---------|-------------|
 | `text` | string |  | `""` | The text. HTML, stored HTML-escaped ("&lt;p&gt;Hello&lt;/p&gt;"); FrameTrail unescapes it before rendering. |
 | `title` | string |  |  | Optional title, plain text, shown above the text. |
-| `box` | object |  |  | Card style. Missing means the text is drawn without a card. |
-| `box.background` | string |  | `transparent` | CSS background colour. |
-| `box.titleColor` | string |  |  | CSS colour of the title. |
-| `box.padding` | number | ≥ 0 |  | Padding in pixels. |
-| `box.radius` | number | ≥ 0 |  | Corner radius in pixels. |
-| `box.borderWidth` | number | ≥ 0 | `0` | Border width in pixels. 0 means no border. |
-| `box.borderColor` | string |  | `#000000` | CSS border colour. |
+| `box` | object |  |  | On overlays: the shape the text is in, and its style. Pixels are pixels of the overlay stage taken as 800 px wide, so the shape scales with the player. Missing means plain text: no fill, no outline, no padding. |
+| `box.shape` | string | `rectangle`, `rounded`, `circle`, `speechBubble`, `cloud`, `arrow` |  | The shape. Circle, speech bubble, cloud and block arrow centre the text in them. Missing (cards made before shapes): rounded when radius is above 0, else rectangle. |
+| `box.direction` | string | `right`, `left`, `up`, `down`, `upRight`, `upLeft`, `downRight`, `downLeft`, `none` |  | speechBubble: where the tail points (default downLeft). cloud: where its two trailing circles go (default downLeft), none for a cloud without them. arrow: where the arrow points, right, left, up or down (default right); other directions come from rotating the overlay. |
+| `box.background` | string |  | `transparent` | CSS fill colour. Missing or "transparent" means no fill. |
+| `box.textColor` | string |  |  | CSS colour of the text and the title; colours set in the text win. Missing means the default text colour (black on overlays). |
+| `box.titleColor` | string |  |  | CSS colour of the title. Missing means the text colour. |
+| `box.padding` | number | ≥ 0 |  | Space between the shape and the text, in pixels. |
+| `box.radius` | number | ≥ 0 |  | rounded and speechBubble: corner radius in pixels (default 12). Ignored by the other shapes. |
+| `box.borderWidth` | number | ≥ 0 | `0` | Outline width in pixels. 0 means no outline. |
+| `box.borderColor` | string |  | `#000000` | CSS outline colour. |
 | `box.shadow` | boolean |  | `false` | Draw a drop shadow. |
+| `autoSize` |  | `height` |  | On overlays: "height" makes the box as high as its content (title, text and shape). The editor sets the height whenever the content or the width changes; only the width is set by hand. When shown, the content is never clipped, even where other fonts make it longer. Missing means the box keeps the size it was given. |
 
 ### `html`
 
@@ -88,44 +92,55 @@ Overlay, annotation. Its src, if it has one, goes into `body.source`. Schema: [`
 
 ### `quiz`
 
-Quiz overlay or annotation: a question with answers to choose (scored), or asking for a free text or a rating, to check understanding at a point in the video. A quiz overlay made in the editor pauses the video when it appears (frametrail:events onStart). Scored question types use onCorrectAnswer and onWrongAnswer, the others onAnswered.
+Quiz overlay or annotation: a question with answers to choose, or asking for a free text or a rating, at a point in the video. In an annotation it is answered where it is shown, by the viewer and on paired phones, and the answers decide what happens next: a multipleChoice quiz does what the answer with the most votes says (its action: continue, stay paused, jump to a time, open a hypervideo or show a link), the other types do what onAnswered says. A quiz pauses the video when it starts if the item has frametrail:pause (quizzes made in the editor do); without it the vote runs while the video plays and is decided when the quiz ends. Quizzes saved before per-answer actions have the outcomes onCorrectAnswer, onWrongAnswer and onAnswered with showText and resumePlayback instead, which are read as actions until the quiz is next changed in the editor.
 
 Overlay, annotation. Its src, if it has one, goes into `body.value`. Schema: [`attributes/quiz.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/attributes/quiz.schema.json).
 
 | Attribute | Type | Values | Default | Description |
 |-----------|------|--------|---------|-------------|
-| `questionType` | string | `multipleChoice`, `multiSelect`, `freeText`, `rating` | `multipleChoice` | multipleChoice: one answer, scored. multiSelect: several answers, scored on submit. freeText: a text response, not scored. rating: a numeric scale, not scored. |
+| `questionType` | string | `multipleChoice`, `multiSelect`, `freeText`, `rating` | `multipleChoice` | multipleChoice: one answer; the answer with the most votes decides. multiSelect: several answers. freeText: a text response. rating: a numeric scale. Only multipleChoice answers have actions; the other types use onAnswered. |
 | `question` | string |  |  | The question, plain text. |
 | `answers` | array of objects |  |  | multipleChoice and multiSelect: the answers. |
 | `answers[].text` | string |  |  | Required. Answer text, plain text. |
-| `answers[].correct` | boolean |  | `false` | Whether this answer is correct. |
-| `onCorrectAnswer` | object |  |  | multipleChoice and multiSelect: what happens after a correct answer. |
-| `onCorrectAnswer.showText` | string or boolean |  | `false` | Text shown in a dialog after answering. false means none. |
-| `onCorrectAnswer.resumePlayback` | boolean |  | `true` | Resume playback after answering. |
-| `onCorrectAnswer.jumpForward` | number or boolean |  | `false` | Seconds to jump forward after answering. false or 0 means no jump. |
-| `onWrongAnswer` | object |  |  | multipleChoice and multiSelect: what happens after a wrong answer. |
-| `onWrongAnswer.showText` | string or boolean |  | `false` | Text shown in a dialog after answering. false means none. |
-| `onWrongAnswer.resumePlayback` | boolean |  | `true` | Resume playback after answering. |
-| `onWrongAnswer.jumpBackward` | number or boolean |  | `10` | Seconds to jump back after answering. false or 0 means no jump. |
-| `onAnswered` | object |  |  | freeText and rating: what happens after answering. |
-| `onAnswered.showText` | string or boolean |  | `false` | Text shown in a dialog after answering. false means none. |
-| `onAnswered.resumePlayback` | boolean |  | `true` | Resume playback after answering. |
+| `answers[].correct` | boolean |  | `false` | Whether this answer is correct: shown as right or wrong after the quiz is decided. It decides nothing (in legacy quizzes it chose between onCorrectAnswer and onWrongAnswer). |
+| `answers[].action` | string | `""`, `pause`, `openUrl`, `jumpToTime`, `jumpToHypervideo` | `""` | multipleChoice: what happens when this answer is decided. A quiz whose answers and onAnswered have no action is a legacy quiz (onCorrectAnswer, onWrongAnswer). |
+| `answers[].actionTarget` | string or number |  |  | Target of the action: a URL for openUrl (one starting with # changes the page hash), seconds of the video for jumpToTime, a hypervideo id for jumpToHypervideo. |
+| `answers[].actionTargetTime` | number or string |  |  | jumpToHypervideo only: the time in seconds to start the target hypervideo at. Empty or 0 means its start. |
+| `answers[].feedback` | string |  |  | Text shown with the result after the quiz is decided. |
+| `answers[].default` | boolean |  | `false` | multipleChoice: the answer decided when the votes are tied or nobody answered before the countdown ended. Without one, a tie goes to the tied answer listed first and no votes to the first answer. At most one; the first counts. |
+| `onCorrectAnswer` | object |  |  | Legacy. multipleChoice and multiSelect: what happens after a correct answer, read when no answer has an action. Replaced by the answers' actions (multiSelect: by onAnswered) on the first change in the editor. |
+| `onCorrectAnswer.showText` | string or boolean |  | `false` | Legacy. Text shown in a dialog after answering. false means none. |
+| `onCorrectAnswer.resumePlayback` | boolean |  | `true` | Legacy. Resume playback after answering. |
+| `onCorrectAnswer.jumpForward` | number or boolean |  | `false` | Legacy. Seconds to jump forward from where the quiz was answered. false or 0 means no jump. Read as jumpToTime. |
+| `onWrongAnswer` | object |  |  | Legacy. multipleChoice and multiSelect: what happens after a wrong answer, read when no answer has an action. Replaced by the answers' actions (multiSelect: by onAnswered) on the first change in the editor. |
+| `onWrongAnswer.showText` | string or boolean |  | `false` | Legacy. Text shown in a dialog after answering. false means none. |
+| `onWrongAnswer.resumePlayback` | boolean |  | `true` | Legacy. Resume playback after answering. |
+| `onWrongAnswer.jumpBackward` | number or boolean |  | `10` | Legacy. Seconds to jump back from where the quiz was answered. false or 0 means no jump. Read as jumpToTime. |
+| `onAnswered` | object |  |  | multiSelect, freeText and rating: what happens after the quiz is decided. |
+| `onAnswered.showText` | string or boolean |  | `false` | Legacy. Text shown after answering, read as feedback while onAnswered has no action. false means none. |
+| `onAnswered.resumePlayback` | boolean |  | `true` | Legacy. Resume playback after answering, read as action "" (true) or "pause" (false) while onAnswered has no action. |
+| `onAnswered.action` | string | `""`, `pause`, `openUrl`, `jumpToTime`, `jumpToHypervideo` | `""` | What happens after the quiz is decided: "" continues playing, "pause" leaves the video paused, "openUrl" shows a link (actionTarget) to open, "jumpToTime" goes to a time (actionTarget, seconds of the video) and plays on, "jumpToHypervideo" opens a hypervideo (actionTarget, its id; actionTargetTime where it starts). |
+| `onAnswered.actionTarget` | string or number |  |  | Target of the action: a URL for openUrl (one starting with # changes the page hash), seconds of the video for jumpToTime, a hypervideo id for jumpToHypervideo. |
+| `onAnswered.actionTargetTime` | number or string |  |  | jumpToHypervideo only: the time in seconds to start the target hypervideo at. Empty or 0 means its start. |
+| `onAnswered.feedback` | string |  |  | Text shown with the result after the quiz is decided. |
 | `ratingScale` | integer | 2–10 | `5` | rating: number of steps. |
+| `countdown` | number | ≥ 0 | `0` | Annotations: seconds the viewers have to answer. When they are up the quiz is decided with the answers given (none: the default answer). 0 means no time limit: the quiz is decided when everyone answering has answered. |
 
 ### `hotspot`
 
-Hotspot overlay: a clickable shape (circle, rectangle, rounded rectangle) that marks something in the picture and can open a URL or jump to a time or another hypervideo, or a drawn mark (arrow, underline, freeform outline) that points something out. Overlay only. A plain hotspot made in the editor pauses the video when it appears (frametrail:events onStart); the drawn marks do not.
+Hotspot overlay: a clickable shape (circle, rectangle, rounded rectangle) that marks something in the picture and can open a URL or jump to a time or another hypervideo, or a drawn mark (arrow, underline, freeform outline) that points something out. Overlay only. A plain hotspot made in the editor pauses the video when it appears (frametrail:pause on the item); the drawn marks do not.
 
 Overlay. It has no src. Schema: [`attributes/hotspot.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/attributes/hotspot.schema.json).
 
 | Attribute | Type | Values | Default | Description |
 |-----------|------|--------|---------|-------------|
 | `shape` | string | `circle`, `rectangle`, `rounded`, `arrow`, `underline`, `freeform` | `circle` | The shape. |
-| `color` | string |  | `#0096ff` | CSS colour of the outline or line. |
-| `borderWidth` | number | ≥ 0 | `5` | Outline or line width in percent of the smaller side of the box. |
+| `color` | string |  | `#0096ff` | CSS colour of the outline (of the line for arrow and underline), and of the pulse. |
+| `borderWidth` | number | 0–40 | `5` | Outline or line width in pixels. 0 means no outline. |
 | `borderRadius` | number | ≥ 0 | `10` | rounded only: corner radius in pixels. |
-| `backgroundColor` | string |  | `""` | CSS fill colour. Set, it hides the pulse ring so the hotspot reads as a button. Empty means no fill. |
-| `text` | string |  | `""` | Label inside the hotspot, plain text. |
+| `backgroundColor` | string |  | `""` | CSS fill colour of the closed shapes (not drawn for arrow and underline). Empty means no fill. Where pulse is missing, a fill hides the pulse ring. |
+| `pulse` | boolean |  |  | Closed shapes: show the pulse ring, an expanding ring in the outline colour. Missing means on unless the hotspot has a fill (hotspots made before the switch). Arrow and underline never pulse. |
+| `text` | string |  | `""` | Label inside the hotspot, plain text. Not drawn for arrow and underline. |
 | `textColor` | string |  | `#ffffff` | CSS colour of the label. |
 | `direction` | string | `right`, `left`, `up`, `down`, `upRight`, `upLeft`, `downRight`, `downLeft` | `right` | arrow only: where the arrow points. |
 | `curve` | string | `straight`, `curved`, `swoop` | `straight` | arrow only: straight, curved (one bend) or swoop (S-like). |
@@ -327,17 +342,17 @@ Overlay, annotation, library resource. Its src, if it has one, goes into `body.v
 
 ### `location`
 
-Map (OpenStreetMap via Leaflet) centred on a coordinate, for a place the video shows or mentions.
+Map (OpenStreetMap-based tiles via Leaflet) centred on a coordinate, for a place the video shows or mentions. Locations are made in the editor as overlays and annotations, their place chosen by a search and a small map in the properties; a resources index may still hold location resources from earlier versions, which are used as before.
 
 Overlay, annotation, library resource. Its src, if it has one, goes into `body.source`. Schema: [`attributes/location.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/attributes/location.schema.json).
 
 | Attribute | Type | Values | Default | Description |
 |-----------|------|--------|---------|-------------|
-| `lat` | number or string |  |  | Latitude (WGS 84). Resources store it as a string. |
-| `lon` | number or string |  |  | Longitude (WGS 84). Resources store it as a string. |
-| `boundingBox` | array of numbers or strings, or string |  |  | Area to fit the map to when zoom is not set: [south, north, west, east] in degrees, numbers or strings. An empty string or array means none. |
-| `zoom` | integer | 0–20 | `15` | Zoom level. |
-| `tileStyle` | string | `osm-standard`, `carto-light`, `carto-dark`, `carto-voyager` | `osm-standard` | Map tiles. |
+| `lat` | number or string |  |  | Latitude (WGS 84): the centre of the map and the marker. Resources and older items store it as a string. |
+| `lon` | number or string |  |  | Longitude (WGS 84): the centre of the map and the marker. Resources and older items store it as a string. |
+| `boundingBox` | array of numbers or strings, or string |  |  | Area to fit the map to when zoom is not set (at most zoom 17): [south, north, west, east] in degrees, numbers or strings; the place search sets it, panning or zooming the map in the editor sets zoom instead. Anything but four numbers (an empty string or array, four empty strings) means none. |
+| `zoom` | integer | 0–20 | `15` | Zoom level. Missing: the bounding box fitted, else 15. |
+| `tileStyle` | string | `osm-standard`, `light`, `dark`, `soft`, `sepia`, `humanitarian`, `opentopomap`, `carto-light`, `carto-dark`, `carto-voyager` | `osm-standard` | Map style: osm-standard (OpenStreetMap's own map); light, dark, soft (muted colours) and sepia (OpenStreetMap's map, recoloured); humanitarian (OpenStreetMap France's Humanitarian style); opentopomap (terrain, OpenTopoMap). The names describe the look, not the tile server behind it. Legacy: carto-light, carto-dark and carto-voyager (CARTO's tiles need an API key since September 2026) are shown as light, dark and soft, and kept as stored until the style is changed. A reader shows a value it does not know as osm-standard. |
 | `marker` | object |  |  | The marker. |
 | `marker.show` | boolean |  | `true` | Show a marker at the centre. |
 | `marker.color` | string |  | `#e74c3c` | CSS colour of the marker. |
