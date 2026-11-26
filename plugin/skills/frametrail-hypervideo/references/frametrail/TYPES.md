@@ -128,7 +128,7 @@ Overlay, annotation. Its src, if it has one, goes into `body.value`. Schema: [`a
 
 ### `hotspot`
 
-Hotspot overlay: a clickable shape (circle, rectangle, rounded rectangle) that marks something in the picture and can open a URL or jump to a time or another hypervideo, or a drawn mark (arrow, underline, freeform outline) that points something out. Overlay only. A plain hotspot made in the editor pauses the video when it appears (frametrail:pause on the item); the drawn marks do not.
+Hotspot overlay: a clickable shape (circle, rectangle, rounded rectangle) that marks something in the picture and can open a URL or jump to a time or another hypervideo, or a drawn mark (arrow, underline, freeform outline) that points something out. Overlay only. A plain hotspot made in the editor pauses the video when it appears (frametrail:pause on the item); the drawn marks do not. A freeform hotspot takes clicks only inside its outline (its action, its onClick code): the rest of its box lets them through to what lies beneath, another overlay or the video.
 
 Overlay. It has no src. Schema: [`attributes/hotspot.schema.json`](https://github.com/OpenHypervideo/FrameTrail/blob/main/schemas/attributes/hotspot.schema.json).
 
@@ -144,7 +144,7 @@ Overlay. It has no src. Schema: [`attributes/hotspot.schema.json`](https://githu
 | `textColor` | string |  | `#ffffff` | CSS colour of the label. |
 | `direction` | string | `right`, `left`, `up`, `down`, `upRight`, `upLeft`, `downRight`, `downLeft` | `right` | arrow only: where the arrow points. |
 | `curve` | string | `straight`, `curved`, `swoop` | `straight` | arrow only: straight, curved (one bend) or swoop (S-like). |
-| `points` | array of objects |  |  | freeform only: the outline as points in 0–100 box coordinates. Smooth points let the outline curve through them, the others are corners. |
+| `points` | array of objects |  |  | freeform only: the outline as points in 0–100 box coordinates. Smooth points let the outline curve through them, the others are corners. An outline that changes over time has points on the keyframes of the overlay's box motion as well (frametrail:keyframes); this is then the outline of the first keyframe, which a consumer shows that does not know them. |
 | `points[].x` | number |  |  | Required. Horizontal position in percent of the box. |
 | `points[].y` | number |  |  | Required. Vertical position in percent of the box. |
 | `points[].smooth` | boolean |  | `false` | Curve through this point instead of a corner. |

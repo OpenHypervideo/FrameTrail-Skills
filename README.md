@@ -34,7 +34,7 @@ In Claude Code:
 
 ## FrameTrail version
 
-Built against FrameTrail `v1.4.6-1-gdd1df62` (commit `dd1df62`, `develop` after 1.4.6), data format 1: the JSON Schemas at `https://frametrail.org/schemas/1/` and bundles and HTML data blocks of `formatVersion` 1. FrameTrail's readers refuse data of a newer format. `vendor.lock.json` names every file the plugin takes from FrameTrail.
+Built against FrameTrail `v1.4.8` (commit `82e7c8f`, the 1.4.8 release), data format 1: the JSON Schemas at `https://frametrail.org/schemas/1/` and bundles and HTML data blocks of `formatVersion` 1. FrameTrail's readers refuse data of a newer format. `vendor.lock.json` names every file the plugin takes from FrameTrail.
 
 ## How it stays in step with FrameTrail
 

@@ -148,7 +148,7 @@ A **project bundle** holds a library:
 }
 ```
 
-`config` carries only the settings that decide how the library looks and plays: `theme`, `defaultLanguage`, `videoFit`, `overviewMode`, `overviewTitle` and `overviewShowSearchBar`. Accounts, authentication, privacy and upload settings belong to an instance and never travel. A project bundle never contains `users.json` or anything from the dot-folders (`.auth/`, `.collab/` and any other).
+`config` carries only the settings that decide how the library looks and plays: `theme`, `defaultLanguage`, `videoFit`, `hypervideoTransition`, `overviewMode`, `overviewTitle`, `overviewShowSearchBar` and the three pairing settings. Accounts, authentication, privacy and upload settings belong to an instance and never travel. A project bundle never contains `users.json` or anything from the dot-folders (`.auth/`, `.collab/` and any other).
 
 A hypervideo's `globalEvents`, `customCSS` and code snippets are JavaScript and CSS that run in the viewer's browser. An importer should show them and ask before taking them.
 
@@ -182,7 +182,7 @@ The **folder** format maps a bundle to the `_data` layout: a map of paths relati
 
 The **html** format is the [portable HTML format](HTML-FORMAT.md): a page with the bundle in a JSON data block, which plays anywhere and is read back without running it. `FrameTrailHTMLFormat`, next to the serializer and loaded the same way, registers it (`readBundle(html, 'html')`, `writeBundle(bundle, 'html', { datapath, config, library })`) and also reads FrameTrail's HTML exports from before this format (`parseLegacy`). A page can also be a project file, edited in place: `readProject` reads it as the `_data` folder of a project, `writeProject` writes the folder back into its data block (see [Editing a Page in Place](HTML-FORMAT.md#editing-a-page-in-place)).
 
-The box-motion math — normalising, sampling and bounding keyframes, and the ease functions — is in `FrameTrailKeyframes`, next to the serializer and loaded the same way. So are the checks beyond the schemas, `FrameTrailLint` ([below](#checks-beyond-the-schemas)).
+The box-motion math — normalising, sampling and bounding keyframes, and the ease functions — is in `FrameTrailKeyframes`, next to the serializer and loaded the same way. It also has what an outline that changes with the keyframes needs (`morphs(keyframes)`, `samplePoints(keyframes, t)`, the geometry of an outline and the edits of such a track). So are the checks beyond the schemas, `FrameTrailLint` ([below](#checks-beyond-the-schemas)).
 
 Inside the player, scripts and extensions read and change the open hypervideo in this format through `instance.edit`, which validates against the schemas and keeps what it does not know ([EXTENDING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/EXTENDING.md#editing-the-hypervideo)).
 
@@ -215,6 +215,10 @@ Lint.checkFolder(files);   // a _data folder in the folder format → [{ path, m
 | `cue-outside-video` | warning | subtitle cues that start at or after the end of the video, so probably belong to another one |
 | `circular-view-unshown` | warning | a view in the ring around the video (`areaCircular`) that is not shown as stored: another type than a collection (`TimedContent`), or a large one (shown as medium) |
 | `quiz-defaults` | warning | a quiz that marks more than one answer as default (decided on a tie or when nobody answers): only the first counts |
+| `quiz-results-empty` | warning | a Quiz Results view (`QuizResults`) in a hypervideo with no question to list: no quiz overlay, and no quiz annotation together with a collection view (`TimedContent`) to show it |
+| `open-when-active-unused` | warning | a collection view that opens its area only while an annotation is active (`openWhenActive`) where that never happens or does nothing: in a hypervideo without annotations, or in the area for paired phones (`areaCompanion`) |
+| `keyframe-points-uneven` | error | a freeform hotspot whose keyframes carry outlines (`points`) that do not fit together: a keyframe without one, different numbers of points, or fewer than three. The outline then does not change over time |
+| `keyframe-points-unused` | warning | outlines (`points`) on the keyframes of an overlay that is not a freeform hotspot: they are ignored |
 
 `checkFolder()` looks at a whole folder for files that do not agree with each other, and for the files no schema describes: a `.json` file that is not JSON; a `.vtt` file the player cannot read as meant (no `WEBVTT` header, a cue timing it does not read, a cue that ends before it starts; `checkVTT(text)` checks one text); a hypervideo `hypervideos/_index.json` lists without its `hypervideo.json`, or one it does not list; a hypervideo without `annotations/_index.json`; an annotation file without its entry in that index, or an entry without its file; a `subtitles` entry without its `.vtt` file, or a `.vtt` file no entry names. A project file is checked through its folder, `FrameTrailHTMLFormat.readProject(html).files`.
 
@@ -229,6 +233,8 @@ Instance settings. Missing keys mean the defaults in the schema. On a public ins
 Booleans are strict. The server refuses uploads only when `allowUploads` is `false` and treats an instance as private only when `alwaysForceLogin` is `true`; the strings `"false"` and `"true"` do neither. [docs/INTEGRATION.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/INTEGRATION.md#writing-the-settings) lists the settings with what a missing key means and when a change takes effect; [docs/DEPLOYMENT.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/DEPLOYMENT.md#configuration) covers `externalAuth`, `externalSettings`, `userAvatars` and `apiTokens`.
 
 `pairingBrokerURL`, `pairingButtonVisible` and `pairingCompanionURL` set up pairing with phones ([docs/PAIRING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/PAIRING.md)): the broker phones and the player find each other through (a URL, or a path on the player's own server; empty: pairing off), whether the player controls offer the pairing button, and the page a phone opens (empty: `companion.html` beside the player page). What a paired phone shows is per hypervideo, in its `config.layoutArea.areaCompanion`.
+
+`hypervideoTransition` is what the viewer sees while a jump leads from one hypervideo to another: `"none"` (the default; the hypervideo changes at once, with a "Loading …" message), one of the built-in looks `"fade"`, `"wipe"` and `"iris"` (a black cover comes in over the hypervideo that is left and goes out over the next one), or the name of a loaded extension that has a transition ([docs/EXTENDING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/EXTENDING.md#slots)); a name that is neither means none. Only jumps from inside a hypervideo are covered: the "Jump to hypervideo" action of hotspots and quiz answers, event code that writes the address, Back and Forward between hypervideos. Opening a hypervideo from the overview and every change while editing have no transition, and a viewer who asks for reduced motion gets a short fade whatever is set. Whether the hypervideo arrived at then plays is its own `config.autoplay`.
 
 `extensions` lists extensions the instance loads, each `{ name, script, style, settings }` ([docs/EXTENDING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/EXTENDING.md#writing-an-extension)). `script` and `style` are paths relative to the page, so on its origin; the player refuses anything else. `settings` is handed to the extension's `init()` untouched; FrameTrail neither reads nor validates it, so the schema leaves it open. An extension that cannot be loaded is skipped, so a `_data` directory naming one works on an installation that does not have it. An entry also switches on the extension's server part, if the installation has one in `_server/extensions/<name>/`.
 
@@ -264,6 +270,12 @@ A video entry may still carry `subtitles` (file names keyed by language) from ea
         "background": "1_1788531102_overview.svg",     // the src of an image resource
         "backgroundColor": "#2f3139",
         "fit": "contain",                              // or "cover"
+        "padding": 5,                                  // space kept clear around the image …
+        "paddingUnit": "percent",                      // … in percent of the map area's width, or "px"
+        "pinStyle": "thumb",                           // or "icon"
+        "pinIcon": "icon-location-2",                  // the icon of icon pins
+        "pinAnimation": "ripple",                      // or "none", "pulse", "scale", "wobble", "glow"
+        "cardShape": "rectangle",                      // or "circle": the card a pin opens
         "lastchanged": 1788942480663,                  // compare-and-swap token, milliseconds
         "markers": {
             "9": { "x": 0.371, "y": 0.182, "size": 6.08 },                       // one pin
@@ -274,6 +286,20 @@ A video entry may still carry `subtitles` (file names keyed by language) from ea
 ```
 
 The overview shows the hypervideos as a grid or, when `config.json` has `overviewMode: "map"`, as pins on the map's background. Markers are keyed by hypervideo id; a marker is one pin, or a list of pins for a hypervideo placed more than once (FrameTrail writes a single pin as the pin itself, never as a list of one). A pin's `x`/`y` are its centre in 0–1 of the background image, `size` its diameter in percent of the stage width; a hypervideo without a marker is not on the map. The map is content, so it lives here rather than in the settings.
+
+The other keys of `overviewMap` say how the map looks (Map Settings, opened while arranging the map). All are optional; a missing key has its default:
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `background` | the `src` of an image resource | none | The image the pins are placed on. Without one the map is an empty area. |
+| `backgroundColor` | a CSS colour | the theme's | Around and behind the image. |
+| `fit` | `"contain"`, `"cover"` | `"contain"` | The whole image is shown, or it fills the map area and its edges are cropped. |
+| `padding` | a number, 0 or more | `0` | Space kept clear between the edges of the map area and the image, the same on all four sides. |
+| `paddingUnit` | `"percent"`, `"px"` | `"percent"` | The unit of `padding`: percent of the map area's width, or pixels. |
+| `pinStyle` | `"thumb"`, `"icon"` | `"thumb"` | A pin shows its hypervideo's thumbnail, or all pins show the same icon. |
+| `pinIcon` | a class of the FrameTrail icon font | `"icon-location-2"` | The icon of icon pins. Kept while `pinStyle` is `"thumb"`, so the choice is not lost. |
+| `pinAnimation` | `"none"`, `"ripple"`, `"pulse"`, `"scale"`, `"wobble"`, `"glow"` | `"none"` | How the pins draw attention. Not shown to viewers who ask for reduced motion. |
+| `cardShape` | `"rectangle"`, `"circle"` | `"rectangle"` | The card a click on a pin opens (the hypervideo's thumbnail, title and play button): a rectangle with the title inside it, or a circle with the title below it. |
 
 ### `hypervideos/<id>/hypervideo.json`
 
@@ -295,10 +321,11 @@ The overview shows the hypervideos as a grid or, when `config.json` has `overvie
 
 - **`meta.lastchanged`** is the compare-and-swap token of server-mode saves: a save carries the value it loaded, and the server refuses it when the file has changed since. A tool that writes this file must change it, or an editor that has the hypervideo open overwrites the tool's change with its next save. In local-folder mode the token is the file's modification time instead, so there any write is noticed (the editor shows that the hypervideo changed and refuses to save over it); a tool should still change `lastchanged`, for the same folder served by PHP.
 - **`clips`** — only the first clip is played. `src` is a file name in `_data/resources/` or a URL (MP4, WebM, HLS, YouTube, Vimeo). Without `src` and `resourceId` the hypervideo has no video, just a timeline of `duration` seconds. `in` and `out` clip the media: the hypervideo shows the media from `in` to `out` (`0` or missing: its end).
-- **`config.layoutArea`** — the content views around the video, in four areas, and those of a phone paired with the player in `areaCompanion` ([docs/PAIRING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/PAIRING.md)): never shown in the player itself; medium views are laid out like the right area's, a large collection shows the annotations at full size in a swipeable row that follows the playback, and a small view is shown (and saved) as medium; empty or missing means the phone shows no views. `areaCircular` holds one collection (`TimedContent`) shown as a grid of annotation thumbnails in rings around the video, clockwise in time from the cell left of the video's bottom edge; the video shrinks to make room for more rings. It is small or medium (a large view is shown, and saved, as medium), a view of another type is not shown, and at 768 px player width or less, or when the thumbnails do not fit around the video, they form a row below the video instead; empty or missing means no ring. The view's `ringGap` (pixels, default 6) is the space between the thumbnails, between them and the video, and between the ring and the player's edges. An area FrameTrail does not know (one of a later version) is kept as it is when the hypervideo is saved. A content view is told apart by `type`: `TimedContent` (a collection of annotations, filtered by `collectionFilter`), `CustomHTML`, `Transcript` (built from the subtitles of `transcriptSource`; empty, or a language without subtitles, means the first subtitles), `Timelines` and `Chapters`. A transcript view is stored as a transcript; only an export that has to stand alone may turn it into `CustomHTML`.
-- **`chapters`** — `{ start, title }`, ordered by `start`. A chapter has no other identity than its `start`, which is unique within the hypervideo.
+- **`config.layoutArea`** — the content views around the video, in four areas, and those of a phone paired with the player in `areaCompanion` ([docs/PAIRING.md](https://github.com/OpenHypervideo/FrameTrail/blob/main/docs/PAIRING.md)): never shown in the player itself; medium views are laid out like the right area's, a large collection shows the annotations at full size in a swipeable row that follows the playback, and a small view is shown (and saved) as medium; empty or missing means the phone shows no views. `areaCircular` holds one collection (`TimedContent`) shown as a grid of annotation thumbnails in rings around the video, clockwise in time from the cell left of the video's bottom edge; the video shrinks to make room for more rings. It is small or medium (a large view is shown, and saved, as medium), a view of another type is not shown, and at 768 px player width or less, or when the thumbnails do not fit around the video, they form a row below the video instead; empty or missing means no ring. The view's `ringGap` (pixels, default 6) is the space between the thumbnails, between them and the video, and between the ring and the player's edges. An area FrameTrail does not know (one of a later version) is kept as it is when the hypervideo is saved. A content view is told apart by `type`: `TimedContent` (a collection of annotations, filtered by `collectionFilter`; with `openWhenActive: true` its layout area is open only while one of its annotations is active: it opens when one starts, closes when the last has ended and stays open between two that are no more than `openGap` seconds of video time apart, default 3; an area with several such views is open while any of them has an active annotation, shows the view whose active annotation started last and uses the largest of their gaps; what the viewer or event code opens or closes by hand stays until the annotations next want something else; around the video and in the ring, not for the phones' views, and `initClosed` has no effect on such a view), `CustomHTML`, `Transcript` (built from the subtitles of `transcriptSource`; empty, or a language without subtitles, means the first subtitles), `Timelines`, `Chapters` (the chapters as cards, or with `chapterStyle: "steps"` as a progress indicator: a dot per chapter on a line that fills up to the chapter that plays; `showChapterTime: false` hides the start times) and `QuizResults` (the hypervideo's questions and what was answered: its quiz overlays and the quiz annotations a `TimedContent` view shows, a dot each, in rows by chapter or by question (`quizRows`: `chapters`, the default, or `questions`); with a score, a legend and a "Start again" button as `showQuizScore`, `showQuizLegend` (both on unless `false`) and `showQuizRestart` say; `rememberQuizResults` keeps the results in the browser's storage, for the hypervideo, when any of its views says so; not shown in the ring). A transcript view is stored as a transcript; only an export that has to stand alone may turn it into `CustomHTML`.
+- **`config.autoplay`** — `true`: the hypervideo starts playing when the viewer comes to it inside the page, after a jump from another hypervideo (once a transition between them is over, see `hypervideoTransition` in `config.json`) or when it is opened from the overview. It never starts on a freshly loaded page, where the browser would refuse sound before a click, and never while editing. Optional: missing means `false`, and the editor writes the key once the switch (hypervideo settings → Advanced Options) is turned on.
+- **`chapters`** — `{ start, title, description? }`, ordered by `start`; `description` is an optional second line that Chapters views show below the title. A chapter has no other identity than its `start`, which is unique within the hypervideo.
 - **`subtitles`** — one WebVTT file per language in the `subtitles/` folder next to the file, named `<srclang>.vtt`. The editor shows them as transcripts (the Transcripts edit mode), in Transcript views and as captions; cue times are on the video's timeline (a clip with an in point starts later than 0). It keeps what it does not change in a file (header, NOTE, STYLE and REGION blocks, cue ids and settings, line endings) and writes cues in the order of their start. A speaker is a voice tag at the start of a cue (`<v Ada>Hello`); `config.captionsVisible` turns captions on from the start.
-- **`globalEvents`** — JavaScript run on player events, edited in the hypervideo settings (Advanced Options). Event code is the body of a function called with `FrameTrail` (the instance) and `hypervideo` (its HypervideoController).
+- **`globalEvents`** — JavaScript run on player events, edited in the hypervideo settings (Advanced Options). Event code is the body of a function called with `FrameTrail` (the instance) and `hypervideo` (its HypervideoController): besides `play()`, `pause()` and `currentTime`, it has `openLayoutArea(name)`, `closeLayoutArea(name)` and `toggleLayoutArea(name)` for the layout areas `top`, `bottom`, `left`, `right` and `circular`. The same goes for an overlay's `frametrail:events`; the editors' action presets insert these calls.
 - **`customCSS`** — deprecated: CSS for this hypervideo. It is still applied while the hypervideo is shown, but FrameTrail no longer edits it; CSS belongs in the instance's `custom.css`.
 
 ### `annotations/_index.json` and `annotations/<userId>.json`
@@ -441,6 +468,28 @@ An overlay's box can move, resize and rotate over its time span. Media Fragments
 - The plain `xywh` in `value` is the union of the moving box within `[start, end]`, clamped to 0–100: what a consumer that does not know the extension shows. It is always the unrotated box.
 - Keyframes may lie outside the time span; they still shape the motion at its edges.
 - A box that does not move but is rotated has `frametrail:rotation` (degrees) on the selector instead. It is omitted when 0 and whenever there are keyframes, which carry the rotation themselves.
+
+#### An outline that changes with the keyframes
+
+The outline of a freeform hotspot (`shape: "freeform"`, its attribute `points`) stretches and turns with the box. It can also change its shape over time: each keyframe then carries the outline of its moment as `points`, beside `t`, `xywh`, `r` and `ease`.
+
+```jsonc
+"frametrail:keyframes": [
+    { "t": 81,   "xywh": [24.8, 20.1, 36.2, 48.9],
+      "points": [ { "x": 12.5, "y": 0, "smooth": true }, { "x": 100, "y": 31 }, { "x": 64, "y": 100 } ] },
+    { "t": 84.5, "xywh": [23, 18.4, 38.9, 52.3], "r": -4, "ease": "easeInOut",
+      "points": [ { "x": 9, "y": 4, "smooth": true }, { "x": 100, "y": 27.5 }, { "x": 71, "y": 100 } ] }
+]
+```
+
+- `points` on a keyframe has the shape of the hotspot's `points`: `{ x, y, smooth? }` in 0–100 coordinates of **that keyframe's box** (values outside are allowed; the editor fits each keyframe's box to its outline).
+- **All keyframes or none.** The outline changes over time only when every keyframe of the overlay has `points`, all with the same number of points, three or more. The points are matched by their place in the list. Anything else is shown with the outline of the attributes all the time, and lint reports it (`keyframe-points-uneven`).
+- Between two keyframes each point moves in a straight line in box coordinates, with the eased progress of the segment, as the box does. `ease: "hold"` holds the outline too. Before the first and after the last keyframe the outline holds.
+- **Corner or curve belongs to the point**, not to the keyframe: `smooth` is read from the first keyframe. Write it the same in every keyframe.
+- **The attributes keep an outline**: `points` in the attributes is the outline of the first keyframe, and `path` is derived from it. It is what a consumer shows that does not know the outlines on the keyframes, as the plain `xywh` in `value` is for the box. The editor keeps it so after every change of the keyframes; a script that writes keyframe outlines writes it too.
+- The stroke, the pulse and the click area follow the outline. Like every overlay animation it is a function of the video time: exact when paused or sought.
+- Other overlays ignore `points` on their keyframes and keep them (`keyframe-points-unused`).
+- In the editor a point moved on a hotspot with keyframes writes the outline of the keyframe at the playhead (making the keyframe if there is none); from the first such move on, every keyframe has an outline. Adding or removing a point, and corner or curve, go into every keyframe. A newly drawn shape replaces the outline at every time: the keyframes lose their `points`.
 
 ### Animation
 
