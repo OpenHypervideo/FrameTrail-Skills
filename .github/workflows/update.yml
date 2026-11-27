@@ -1,0 +1,154 @@
+name: Update
+
+# Daily and by hand: when the vendored files are not those of FrameTrail's latest release (or of the ref given by hand), syncs them, runs the tests and opens a pull request "Sync FrameTrail X.Y.Z" with the result. Nothing is merged: review the diff, fix the skill's text on the branch, merge (see CLAUDE.md, "Tests and CI").
+#
+# - The latest release is npm's: FrameTrail publishes to npm last, so the release is also on jsDelivr, where new project files load it from. Prereleases are left to a run by hand.
+# - Each FrameTrail version gets its own branch, frametrail/<git describe>. A run finds it there and stops, so it never overwrites fixes pushed to the branch, nor reopens a pull request that was closed.
+# - The pull request is opened with GITHUB_TOKEN, so test.yml does not run on it by itself: the test result in its description is this run's. A push to the branch runs test.yml, as does running it by hand on the branch.
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: FrameTrail tag, branch or commit (empty for the latest release)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: frametrail-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Find the FrameTrail release
+        id: release
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          if [ -z "$REF" ]; then
+            version=$(npm view @frametrail/frametrail dist-tags.latest)
+            case "$version" in
+              *-*) echo "The latest release, $version, is a prerelease: run this workflow by hand with its tag to sync it."; exit 0 ;;
+            esac
+            REF="v$version"
+          fi
+          echo "FrameTrail $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout FrameTrail
+        if: steps.release.outputs.ref
+        uses: actions/checkout@v4
+        with:
+          repository: OpenHypervideo/FrameTrail
+          ref: ${{ steps.release.outputs.ref }}
+          path: frametrail
+          # The tags, for git describe; blobs only for the files checked out
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Compare the vendored files with FrameTrail
+        id: compare
+        if: steps.release.outputs.ref
+        run: |
+          code=0
+          node dev/sync.mjs --frametrail=frametrail --check || code=$?
+          case "$code" in
+            0) echo "Nothing to do." >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
+            1) ;;
+            *) exit "$code" ;;
+          esac
+          version=$(git -C frametrail describe --tags)
+          branch="frametrail/$version"
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            echo "The branch $branch exists already (its pull request is open or was closed): nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "before=$(node -p "require('./vendor.lock.json').frametrail.commit")" >> "$GITHUB_OUTPUT"
+
+      - name: Sync
+        if: steps.compare.outputs.branch
+        run: node dev/sync.mjs --frametrail=frametrail
+
+      - name: Run the tests
+        id: tests
+        if: steps.compare.outputs.branch
+        continue-on-error: true
+        run: node --test-reporter=spec tests/run.mjs 2>&1 | tee "$RUNNER_TEMP/tests.log"
+
+      - name: Open the pull request
+        if: steps.compare.outputs.branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.compare.outputs.version }}
+          BRANCH: ${{ steps.compare.outputs.branch }}
+          BEFORE: ${{ steps.compare.outputs.before }}
+          TESTS: ${{ steps.tests.outcome }}
+        run: |
+          after=$(git -C frametrail rev-parse HEAD)
+          case "$VERSION" in
+            v*-*-g*) title="Sync FrameTrail $VERSION"; release="" ;;
+            v*)      title="Sync FrameTrail ${VERSION#v}"; release="[Release notes](https://github.com/OpenHypervideo/FrameTrail/releases/tag/$VERSION) · " ;;
+            *)       title="Sync FrameTrail $VERSION"; release="" ;;
+          esac
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$BRANCH"
+          git add --all -- plugin/vendor/frametrail plugin/skills/frametrail-hypervideo/references/frametrail tests/fixtures/frametrail tests/fixtures/frametrail-bundles vendor.lock.json README.md
+          git commit -m "$title"
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "FrameTrail \`$VERSION\` (\`${after:0:7}\`), synced by the [Update workflow]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            echo
+            echo "${release}[Changes in FrameTrail](https://github.com/OpenHypervideo/FrameTrail/compare/$BEFORE...$after)"
+            echo
+            if [ "$TESTS" = success ]; then
+              echo "**Tests:** pass."
+            else
+              echo "**Tests:** fail."
+              echo
+              echo '<details><summary>The end of the test output</summary>'
+              echo
+              echo '```'
+              tail -n 120 "$RUNNER_TEMP/tests.log"
+              echo '```'
+              echo
+              echo '</details>'
+            fi
+            echo
+            echo '```'
+            git show --stat --format= HEAD
+            echo '```'
+            echo
+            echo 'Before merging:'
+            echo
+            echo '- [ ] Read the diff of `plugin/skills/frametrail-hypervideo/references/frametrail/` (FrameTrail'"'"'s docs) for what the skill'"'"'s own text (`SKILL.md`, `references/`) should now say, and edit it on this branch.'
+            echo '- [ ] Fix what failing tests name, usually examples in the skill'"'"'s text against the new schemas.'
+            echo '- [ ] Optionally, after larger changes: `node dev/eval.mjs --no-baseline`.'
+            echo
+            echo 'GitHub Actions opened this pull request, so `test.yml` does not run on it by itself; the result above is from the Update run. A push to this branch runs it.'
+          } > "$body"
+
+          gh pr create --head "$BRANCH" --title "$title" --body-file "$body"
+          echo "Opened a pull request for $BRANCH (tests: $TESTS)." >> "$GITHUB_STEP_SUMMARY"

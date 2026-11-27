@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # On a branch by hand, e.g. one Update opened a pull request from (its own pushes do not start workflows)
+  workflow_dispatch:
 
 jobs:
   test:

@@ -2,7 +2,6 @@
  * The repository's tests. No dependencies and no FrameTrail checkout, Node 20 or later:
  *
  *     node tests/run.mjs
- *     node tests/run.mjs --drift     # after syncing a newer FrameTrail (drift.yml): the README's version is not checked
  *
  * - The vendored files: exactly those of vendor.lock.json, unchanged; the scripts load under require() and work together on the vendored fixtures.
  * - The plugin: the marketplace and plugin manifests, what plugin/ holds, each skill's frontmatter, the hooks.
@@ -19,7 +18,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { VENDORED, LOCK, sha256, filesBelow, presentFiles, rewriteLinks, packageJSON, releaseOf } from '../dev/sync.mjs';
+import { VENDORED, LOCK, sha256, filesBelow, presentFiles, rewriteLinks, packageJSON, releaseOf, readmeVersion } from '../dev/sync.mjs';
 import * as Check from '../plugin/scripts/check.mjs';
 import { SETUPS, build as buildSetup } from '../evals/lib/setups.mjs';
 import { CHECKS, grade, readData } from '../evals/lib/checks.mjs';
@@ -28,7 +27,6 @@ import { finalMessage, keptRun, gradeResults, table } from '../dev/eval.mjs';
 const require = createRequire(import.meta.url);
 const ROOT    = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLUGIN  = path.join(ROOT, 'plugin');
-const DRIFT   = process.argv.includes('--drift');
 
 const vendor     = (file) => require(path.join(ROOT, VENDORED.scripts, file));
 const Serializer = vendor('serialization/FrameTrailSerializer.js');
@@ -1027,8 +1025,17 @@ describe('README.md', () => {
 
     const text = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
 
-    test('names the pinned FrameTrail version', { skip: DRIFT ? 'a drift run syncs a newer FrameTrail' : false }, () => {
+    test('names the pinned FrameTrail version, as the sync writes it', () => {
         assert.ok(text.includes(readJSON(LOCK).frametrail.version), 'README.md does not name FrameTrail ' + readJSON(LOCK).frametrail.version);
+        assert.equal(readmeVersion(text, readJSON(LOCK).frametrail), text, 'README.md names the version as dev/sync.mjs writes it');
+        const sentence = 'Built against FrameTrail `v1.0.0` (commit `0000000`, the 1.0.0 release), data format 1.',
+              commit   = 'adad3ca'.padEnd(40, '0');
+        assert.equal(readmeVersion(sentence, { version: 'v1.4.9', commit }), 'Built against FrameTrail `v1.4.9` (commit `adad3ca`, the 1.4.9 release), data format 1.');
+        assert.equal(readmeVersion(sentence, { version: 'v1.4.9-5-g50d176a', commit }), 'Built against FrameTrail `v1.4.9-5-g50d176a` (commit `adad3ca`, after 1.4.9), data format 1.');
+        assert.equal(readmeVersion(sentence, { version: 'v2.0.0-beta.1-dirty', commit }), 'Built against FrameTrail `v2.0.0-beta.1-dirty` (commit `adad3ca`, the 2.0.0-beta.1 release, with changes), data format 1.');
+        assert.equal(readmeVersion(sentence, { version: 'adad3ca', commit }), 'Built against FrameTrail `adad3ca` (commit `adad3ca`, no release), data format 1.');
+        assert.throws(() => readmeVersion('Built against FrameTrail 1.4.9.', { version: 'v1.4.9', commit }), /in 0 places/);
+        assert.throws(() => readmeVersion(sentence + ' ' + sentence, { version: 'v1.4.9', commit }), /in 2 places/);
     });
 
     test('names the data format the vendored FrameTrail reads and writes', () => {

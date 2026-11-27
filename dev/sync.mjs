@@ -14,7 +14,9 @@
  * - tests/fixtures/data/<name>/ → tests/fixtures/frametrail/<name>/;
  * - tests/fixtures/lint/data/*.json (data sets as bundles: the lecture, a project, legacy forms) → tests/fixtures/frametrail-bundles/, which the evaluation's workspaces are made from.
  *
- * Each target folder belongs to the sync: files there that FrameTrail no longer has are removed. vendor.lock.json records FrameTrail's version (git describe) and commit, and the SHA-256 of every file written; tests/run.mjs checks the files against it.
+ * Each target folder belongs to the sync: files there that FrameTrail no longer has are removed. vendor.lock.json records FrameTrail's version (git describe) and commit, and the SHA-256 of every file written; tests/run.mjs checks the files against it. The sentence in README.md that names the version is rewritten to match (readmeVersion); nothing else outside the target folders is touched.
+ *
+ * .github/workflows/update.yml runs it daily against the latest release and opens a pull request when something would change.
  */
 
 import fs from 'node:fs';
@@ -26,6 +28,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export const LOCK = path.join(ROOT, 'vendor.lock.json');
+
+const README = path.join(ROOT, 'README.md');
 
 const REPOSITORY = 'https://github.com/OpenHypervideo/FrameTrail';
 
@@ -65,6 +69,23 @@ export function packageJSON(release) {
 export function releaseOf(tag) {
     const m = /^v?(\d+\.\d+\.\d+\S*)$/.exec(String(tag || '').trim());
     return m ? m[1] : null;
+}
+
+// The README's sentence that names the FrameTrail the copies come from.
+const README_VERSION = /Built against FrameTrail `[^`]+` \(commit `[0-9a-f]+`, [^)]*\)/g;
+
+/**
+ * README.md's text with its version sentence naming frametrail ({ version, commit } as in the lock): "Built against FrameTrail `v1.4.9` (commit `adad3ca`, the 1.4.9 release)", or "…, after 1.4.9)" for a commit after a tag. Throws unless the text has the sentence exactly once.
+ */
+export function readmeVersion(text, frametrail) {
+    const found = String(text).match(README_VERSION) || [];
+    if (found.length !== 1) { throw new Error('README.md names FrameTrail\'s version in ' + found.length + ' places, expected one: ' + README_VERSION.source); }
+    const dirty   = /-dirty$/.test(frametrail.version),
+          base    = frametrail.version.replace(/-dirty$/, ''),
+          tagged  = /^v?\d+\.\d+\.\d+\S*$/.test(base) && !/-\d+-g[0-9a-f]+$/.test(base),
+          release = releaseOf(base.replace(/-\d+-g[0-9a-f]+$/, '')),
+          what    = (tagged ? 'the ' + release + ' release' : release ? 'after ' + release : 'no release') + (dirty ? ', with changes' : '');
+    return text.replace(README_VERSION, 'Built against FrameTrail `' + frametrail.version + '` (commit `' + frametrail.commit.slice(0, 7) + '`, ' + what + ')');
 }
 
 
@@ -185,9 +206,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
           frametrail = path.resolve(ROOT, option('frametrail') || process.env.FRAMETRAIL_DIR || path.join('..', 'frametrail')),
           check      = process.argv.includes('--check');
 
-    let vendored;
+    let vendored, readme;
     try {
         vendored = vendoredFiles(frametrail, { allowDirty: process.argv.includes('--allow-dirty') });
+        readme   = readmeVersion(fs.readFileSync(README, 'utf8'), vendored.frametrail);
     } catch (e) {
         console.error(e.message);
         process.exit(2);
@@ -221,7 +243,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         })(dir);
     }
     fs.writeFileSync(LOCK, lockOf(vendored));
+    fs.writeFileSync(README, readme);
 
-    console.log(count ? 'Synced ' + count + ' file(s); wrote vendor.lock.json.' : 'Nothing changed; wrote vendor.lock.json.');
+    console.log((count ? 'Synced ' + count + ' file(s)' : 'Nothing changed') + '; wrote vendor.lock.json and the version in README.md.');
 
 }

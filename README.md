@@ -38,7 +38,7 @@ Built against FrameTrail `v1.4.8` (commit `82e7c8f`, the 1.4.8 release), data fo
 
 ## How it stays in step with FrameTrail
 
-The plugin carries copies of FrameTrail's pure scripts (serializer, HTML format, lint, validator, schemas), of its data documentation and of its test data. `dev/sync.mjs` copies them from a FrameTrail working copy and writes `vendor.lock.json`; nobody edits the copies. The tests check the copies against the lock and the text written for Claude against the copies: JSON examples validate against FrameTrail's schemas, the types it names exist, the files it names are there. A weekly workflow compares the copies with FrameTrail's `develop` branch and fails when they differ or when the tests break with the newer files.
+The plugin carries copies of FrameTrail's pure scripts (serializer, HTML format, lint, validator, schemas), of its data documentation and of its test data. `dev/sync.mjs` copies them from a FrameTrail working copy and writes `vendor.lock.json`; nobody edits the copies. The tests check the copies against the lock and the text written for Claude against the copies: JSON examples validate against FrameTrail's schemas, the types it names exist, the files it names are there. A daily workflow compares the copies with FrameTrail's latest release and, when they differ, opens a pull request with the synced files and the test result; the skill's own text is then brought up to date on that branch.
 
 To move to a newer FrameTrail:
 
@@ -47,7 +47,7 @@ node dev/sync.mjs --frametrail=../frametrail     # a FrameTrail working copy at 
 node tests/run.mjs
 ```
 
-Then review the diff, fix the text the tests point at, update the version above, and commit.
+The sync also updates the version above. Then review the diff, fix the text the tests point at, and commit.
 
 ## Development
 
