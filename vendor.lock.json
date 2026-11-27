@@ -1,15 +1,15 @@
 {
     "frametrail": {
-        "version": "v1.4.8",
-        "commit": "82e7c8f347c79b9c7de3e7249f27c293efbad32f"
+        "version": "v1.4.9",
+        "commit": "adad3caf66f3357f61f74268dc2dc127c4d1c7aa"
     },
     "files": {
-        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "49e39e8edad8915df356862e9bc9be6cb7ec49fb357b3361d137e12dfae6ded2",
+        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "4b233538e207216e4290899c2072313593b0b1860e499e9f73615045df156a25",
         "plugin/skills/frametrail-hypervideo/references/frametrail/HTML-FORMAT.md": "4144a4fca4ec9fcfcd06a4d7ee7bbf95333b0b881ea3cdf3dd6cb6f8d1d3f717",
         "plugin/skills/frametrail-hypervideo/references/frametrail/TYPES.md": "377892f4314548ada687fdf27c6a52780dc21cce4d03dabcb65708c9c991fb7a",
         "plugin/vendor/frametrail/LICENSE.md": "d6da78cd95206efbd19f532dcff5675e90ce25ec6e1f8443871488e6124767b7",
         "plugin/vendor/frametrail/THIRD-PARTY-NOTICES.md": "95156863663d8fd35515f3f276b3621f5459d501cedf79a7ee3a6239020a3845",
-        "plugin/vendor/frametrail/package.json": "29b1e582f2edcdd9881aa9f1dbba7e724331c56928a0c822caa0035a34def6e0",
+        "plugin/vendor/frametrail/package.json": "4a4d5199862269256b1ec5b796b4c9f72829fb04e0ddd8790ec4aa8951d4f0ca",
         "plugin/vendor/frametrail/schema/FrameTrailSchema.js": "5c713ab349886e10a761f55c297788dc7d360b2310cc2b3be115f968ec4c4988",
         "plugin/vendor/frametrail/schema/FrameTrailSchemas.js": "4ce0771cc641c5eb8980ad2cdb7c71847f1992fd09e6ee9241ef631caf10c883",
         "plugin/vendor/frametrail/serialization/FrameTrailHTMLFormat.js": "b3b09628353f2c44dd987c0d5dd7499a430a80a9a9082a859df8478f01058afa",
