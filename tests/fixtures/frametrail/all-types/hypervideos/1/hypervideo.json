@@ -65,6 +65,7 @@
                     "cssClass": "",
                     "contentSize": "medium",
                     "initClosed": false,
+                    "showTags": true,
                     "collectionFilter": {
                         "tags": [],
                         "types": [],
@@ -337,6 +338,7 @@
                 "frametrail:attributes": {
                     "questionType": "multipleChoice",
                     "question": "Which molecule carries genetic information?",
+                    "countdown": 20,
                     "answers": [
                         {
                             "text": "DNA",

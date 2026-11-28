@@ -1,17 +1,17 @@
 {
     "frametrail": {
-        "version": "v1.4.9",
-        "commit": "adad3caf66f3357f61f74268dc2dc127c4d1c7aa"
+        "version": "v1.5.1",
+        "commit": "d270449b563e8f5bc8c46e167ac61824c4e6d934"
     },
     "files": {
-        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "4b233538e207216e4290899c2072313593b0b1860e499e9f73615045df156a25",
+        "plugin/skills/frametrail-hypervideo/references/frametrail/DATA-MODEL.md": "508909ff4a4402579a50ab24d8359cb06c1496626b0d96dcd6175c73acbf0230",
         "plugin/skills/frametrail-hypervideo/references/frametrail/HTML-FORMAT.md": "4144a4fca4ec9fcfcd06a4d7ee7bbf95333b0b881ea3cdf3dd6cb6f8d1d3f717",
-        "plugin/skills/frametrail-hypervideo/references/frametrail/TYPES.md": "377892f4314548ada687fdf27c6a52780dc21cce4d03dabcb65708c9c991fb7a",
+        "plugin/skills/frametrail-hypervideo/references/frametrail/TYPES.md": "cda7fdea4f98948033dedd9994713ee5a01c54974cae3b24af9df3e0b106f745",
         "plugin/vendor/frametrail/LICENSE.md": "d6da78cd95206efbd19f532dcff5675e90ce25ec6e1f8443871488e6124767b7",
         "plugin/vendor/frametrail/THIRD-PARTY-NOTICES.md": "95156863663d8fd35515f3f276b3621f5459d501cedf79a7ee3a6239020a3845",
-        "plugin/vendor/frametrail/package.json": "4a4d5199862269256b1ec5b796b4c9f72829fb04e0ddd8790ec4aa8951d4f0ca",
+        "plugin/vendor/frametrail/package.json": "9b9f3a1f1c4fe444ee3177fd8ab27828e4e2e3acb8fc68edeab5ed91b0abb8b9",
         "plugin/vendor/frametrail/schema/FrameTrailSchema.js": "5c713ab349886e10a761f55c297788dc7d360b2310cc2b3be115f968ec4c4988",
-        "plugin/vendor/frametrail/schema/FrameTrailSchemas.js": "4ce0771cc641c5eb8980ad2cdb7c71847f1992fd09e6ee9241ef631caf10c883",
+        "plugin/vendor/frametrail/schema/FrameTrailSchemas.js": "6d4097ea4c7a4eb496e62aa8360f2a1f638894745aa16d378ec517afa291c41e",
         "plugin/vendor/frametrail/serialization/FrameTrailHTMLFormat.js": "b3b09628353f2c44dd987c0d5dd7499a430a80a9a9082a859df8478f01058afa",
         "plugin/vendor/frametrail/serialization/FrameTrailKeyframes.js": "1f2761b65c98b3e0a5b74c754a6270059551d6b1e25ab61b48f2753362be5901",
         "plugin/vendor/frametrail/serialization/FrameTrailLint.js": "26e085ee81e4e84e838ab3d57cb87e1b1414bee13615e02e4708027169d78c25",
@@ -23,7 +23,7 @@
         "tests/fixtures/frametrail/all-types/custom.css": "bb9be7e65b24f6439040f2d9e9640701ec673e3e23b9b947e45f19fe9d71eea6",
         "tests/fixtures/frametrail/all-types/hypervideos/1/annotations/1.json": "c7ef81a5277d0a5c4c01294e0675fcf1632fc8841a56d806a246026938989067",
         "tests/fixtures/frametrail/all-types/hypervideos/1/annotations/_index.json": "462faeb14d16ceacd63161bbba3f64ba534d9a86d13b73130211085687258ea9",
-        "tests/fixtures/frametrail/all-types/hypervideos/1/hypervideo.json": "5f1bcc78c8a97123fd77db721d26768a56507b0a578ff222f845b682219bc52d",
+        "tests/fixtures/frametrail/all-types/hypervideos/1/hypervideo.json": "1a7051121b96cc0799b0dc99217daede01e44e7ea79862dc5a3711d3623e9b2c",
         "tests/fixtures/frametrail/all-types/hypervideos/1/subtitles/en.vtt": "42c030d447a42dd011cd99b8ef4155aa9eca8a0acbcec6d58c7918d27458426a",
         "tests/fixtures/frametrail/all-types/hypervideos/_index.json": "a0307e494419d988154efe9e9f7515d7e6f30630c4a485ce19e88fe411d0dc9d",
         "tests/fixtures/frametrail/all-types/resources/_index.json": "44dcdac8fe09ecb21c341f5f4583161c8a2a3cd12134233cbec9e24cee15795f",
